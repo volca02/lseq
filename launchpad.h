@@ -118,7 +118,7 @@ public:
     }
 
     static uchar color(uchar r, uchar g) {
-        return r << 4 | g;
+        return g << 4 | r;
     }
 
     /** Sets color of the button btn (as specified in KeyEvent code) */
