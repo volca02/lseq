@@ -40,10 +40,11 @@ public:
         bool press; // true for press, false for release
     };
 
+    using uchar = unsigned char;
+
     using Callback = std::function<void(Launchpad&, const KeyEvent&)>;
     // for fast_fill, this is a callback to get field color based on coords
-    using ColorCb  = std::function<unsigned char(unsigned,unsigned)>;
-    using uchar = unsigned char;
+    using ColorCb  = std::function<uchar(unsigned,unsigned)>;
 
     Launchpad(const Launchpad &) = delete;
 
@@ -58,7 +59,7 @@ public:
         // midiin->ignoreTypes(false, false, false);
 
         midi_in.setCallback([](double deltatime,
-                               std::vector<unsigned char> *message,
+                               std::vector<uchar> *message,
                                void *userData) {
             static_cast<Launchpad *>(userData)->process_event(deltatime,
                                                               message);
@@ -122,17 +123,17 @@ public:
     }
 
     /** Sets color of the button btn (as specified in KeyEvent code) */
-    void set_color(unsigned btn, unsigned char r, unsigned char g) {
+    void set_color(unsigned btn, uchar r, uchar g) {
         // there are special bits 3, 2 - Clear and Copy. Used for double buffering
-        unsigned char col = std::min(r, uchar(3)) << 4 | std::min(g, uchar(3));
+        uchar col = std::min(r, uchar(3)) << 4 | std::min(g, uchar(3));
 
         if (btn >= 200) { // automap
             if (btn > 207)
                 return; // err!
 
-            send_msg({0xB0, (unsigned char)(btn - 96), col});
+            send_msg({0xB0, (uchar)(btn - 96), col});
         } else {
-            send_msg({0x90, (unsigned char)btn, col});
+            send_msg({0x90, (uchar)btn, col});
         }
     }
 
@@ -186,7 +187,7 @@ protected:
     }
 
     void process_event(double deltatime,
-                       std::vector<unsigned char> *message)
+                       std::vector<uchar> *message)
     {
         if (message->size() != 3) {
             // TODO: log weird packet encounter
