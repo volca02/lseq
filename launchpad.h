@@ -119,13 +119,13 @@ public:
     }
 
     static uchar color(uchar r, uchar g) {
-        return g << 4 | r;
+        return std::min(g, uchar(3)) << 4 | std::min(r, uchar(3));
     }
 
     /** Sets color of the button btn (as specified in KeyEvent code) */
     void set_color(unsigned btn, uchar r, uchar g) {
         // there are special bits 3, 2 - Clear and Copy. Used for double buffering
-        uchar col = std::min(r, uchar(3)) << 4 | std::min(g, uchar(3));
+        uchar col = color(r, g);
 
         if (btn >= 200) { // automap
             if (btn > 207)
