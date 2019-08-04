@@ -1,5 +1,8 @@
 #pragma once
 
+#include <atomic>
+
+
 #include "common.h"
 #include "launchpad.h"
 #include "sequence.h"
@@ -28,11 +31,20 @@ public:
 
     virtual ScreenType get_type() const = 0;
 
+    virtual void update() {};
+
 protected:
+    using mutex = std::mutex;
+    using lock  = std::scoped_lock<std::mutex>;
+
     void set_active_mode_button(unsigned o);
 
     UI &ui;
     Launchpad &launchpad;
+
+    // mutex for multithreaded access locking
+    std::mutex mtx;
+
 };
 
 /** Project screen. Track mapping to midi channels
@@ -73,30 +85,35 @@ private:
 class SequenceScreen : public UIScreen {
 public:
     // default to quarter note view...
-  SequenceScreen(UI &ui)
-      : UIScreen(ui), time_scaler(0, PPQN),
-        note_scaler(NOTE_C3, Launchpad::MATRIX_H)
-  {}
+    SequenceScreen(UI &ui)
+        : UIScreen(ui), time_scaler(0, PPQN),
+          note_scaler(NOTE_C3, Launchpad::MATRIX_H)
+    {}
 
-  virtual ScreenType get_type() const { return SCR_SEQUENCE; };
+    virtual ScreenType get_type() const { return SCR_SEQUENCE; };
 
-  void set_active_sequence(Sequence *seq) { sequence = seq; }
+    void set_active_sequence(Sequence *seq) { sequence = seq; }
 
-  void on_key(const Launchpad::KeyEvent &ev) override;
-  void on_enter() override;
-  void on_exit() override;
+    void on_key(const Launchpad::KeyEvent &ev) override;
+    void on_enter() override;
+    void on_exit() override;
+
+    virtual void update() override;
 
 private:
-    void mark_dirty() { repaint(); } // TODO: make this deffered
+    using View = uchar[Launchpad::MATRIX_W][Launchpad::MATRIX_H];
+
+    void mark_dirty() { dirty = true; } // TODO: make this deffered
     void repaint();
     void clear_view();
 
     // converts view state for given coords to color for rendering
-    uchar to_color(unsigned x, unsigned y);
+    uchar to_color(View &v, unsigned x, unsigned y);
 
     Sequence *sequence = nullptr;
 
     bool shift = false; // mixer key status
+    std::atomic<bool> dirty = true;  // needs repaint?
 
     TimeScaler time_scaler;
     NoteScaler note_scaler;
@@ -112,7 +129,7 @@ private:
     };
 
     // this encodes the current view. each field is a bitmap (see FieldStatus)
-    uchar view[Launchpad::MATRIX_W][Launchpad::MATRIX_H] = {};
+    View view = {};
 };
 
 class UI {
@@ -147,6 +164,11 @@ public:
             if (next) next->on_enter();
             current_screen = next;
         }
+    }
+
+    void update() {
+        if (current_screen)
+            current_screen->update();
     }
 
 private:

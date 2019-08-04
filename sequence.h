@@ -11,7 +11,8 @@
 class Sequence {
 public:
     using Events = std::list<Event>;
-    using const_iterator = Events::const_iterator;
+    using mutex = std::mutex;
+    using lock  = std::scoped_lock<std::mutex>;
 
     // unmarks all notes
     void unmark_all();
@@ -28,13 +29,22 @@ public:
     // sets note length for marked range
     void set_length(ticks l);
 
-    const_iterator begin() const { return events.begin(); }
-    const_iterator end()   const { return events.end(); }
+    struct handle {
+        using const_iterator = Events::const_iterator;
+
+        handle(Sequence &s) : s(s), l(s.mtx) {
+        }
+
+        const_iterator begin() const { return s.events.begin(); }
+        const_iterator end()   const { return s.events.end(); }
+
+        Sequence &s;
+        lock l;
+    };
+
+    handle get_handle() { return {*this}; }
 
 protected:
-    using mutex = std::mutex;
-    using lock  = std::scoped_lock<std::mutex>;
-
     // re-links all note on/offs, purges singluar events (note ons without note
     // offs and vice versa)
     void _tidy();

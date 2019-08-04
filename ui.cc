@@ -76,6 +76,8 @@ void SequenceScreen::on_exit() {
 };
 
 void SequenceScreen::on_key(const Launchpad::KeyEvent &ev) {
+    lock l(mtx);
+
     if (ev.code == Launchpad::BC_MIXER) {
         shift = ev.press;
         return;
@@ -131,72 +133,92 @@ void SequenceScreen::on_enter() {
     repaint();
 };
 
-void SequenceScreen::repaint() {
-    // color up our mode button
-    set_active_mode_button(2);
-
-    if (!sequence) {
-        launchpad.flip();
-        return;
+void SequenceScreen::update() {
+    if (dirty) {
+        repaint();
+        dirty = false;
     }
+}
 
-    // TODO: if we're live, also draw a time bar
+void SequenceScreen::repaint() {
+    View v; // to make device updates not block our mutex, we copy the data
+    {
+        lock l(mtx);
 
-    // prepare a buffer for the sequence display
-    clear_view();
+        // color up our mode button
+        set_active_mode_button(2);
 
-    // we DO have a sequence to work on
-    // prepare the view beforehand
-    for (const auto &ev : *sequence) {
-        // skip non-note-on events
-        if (!ev.is_note_on()) continue;
-
-        long x = time_scaler.to_quantum(ev.get_ticks());
-        bool accurate = time_scaler.is_scale_accurate(ev.get_ticks());
-        long y = note_scaler.to_grid(ev.get_note());
-        bool in_scale = note_scaler.is_in_scale(ev.get_note());
-
-        // also quantize the length
-        long l = time_scaler.length_to_quantum(ev.get_length());
-
-        if (y < 0) continue;
-        if (y >= Launchpad::MATRIX_H) continue;
-        if (x < 0) continue;
-        if (x >= Launchpad::MATRIX_W) continue;
-
-        uchar c = view[x][y];
-
-        if (c & FS_HAS_NOTE)
-            c |= FS_MULTIPLE;
-        else
-            c |= FS_HAS_NOTE;
-
-        // if the note timing is not accurate, mark it down
-        if (!accurate)
-            c |= FS_INACCURATE;
-
-        // mark continution
-        for (long c = 1; c < l; ++c) {
-            if (x + c > Launchpad::MATRIX_W) break;
-            view[x + c][y] |= FS_CONT;
+        if (!sequence) {
+            launchpad.flip();
+            return;
         }
 
-        view[x][y] = c;
+        // TODO: if we're live, also draw a time bar
+
+        // prepare a buffer for the sequence display
+        clear_view();
+
+        auto seq_handle = sequence->get_handle();
+
+        // we DO have a sequence to work on
+        // prepare the view beforehand
+        for (const auto &ev : seq_handle) {
+            // skip non-note-on events
+            if (!ev.is_note_on()) continue;
+
+            long x = time_scaler.to_quantum(ev.get_ticks());
+            bool accurate = time_scaler.is_scale_accurate(ev.get_ticks());
+            long y = note_scaler.to_grid(ev.get_note());
+            bool in_scale = note_scaler.is_in_scale(ev.get_note());
+
+            // also quantize the length
+            long l = time_scaler.length_to_quantum(ev.get_length());
+
+            if (y < 0) continue;
+            if (y >= Launchpad::MATRIX_H) continue;
+            if (x < 0) continue;
+            if (x >= Launchpad::MATRIX_W) continue;
+
+            uchar c = view[x][y];
+
+            if (c & FS_HAS_NOTE)
+                c |= FS_MULTIPLE;
+            else
+                c |= FS_HAS_NOTE;
+
+            // if the note timing is not accurate, mark it down
+            if (!accurate)
+                c |= FS_INACCURATE;
+
+            // mark continution
+            for (long c = 1; c < l; ++c) {
+                if (x + c > Launchpad::MATRIX_W) break;
+                view[x + c][y] |= FS_CONT;
+            }
+
+            view[x][y] = c;
+        }
+
+        // make a copy of our view to use when updating
+        for (uchar x = 0; x < Launchpad::MATRIX_W; ++x)
+            for (uchar y = 0; y < Launchpad::MATRIX_H; ++y)
+                v[x][y] = view[x][y];
     }
 
+    // TODO: rather time-consuming. We should rather do partial updates here
     // render the UI part
     launchpad.fill_matrix(
-            [this](unsigned x, unsigned y) {
-                return to_color(x, y);
+            [this, &v](unsigned x, unsigned y) {
+                return to_color(v, x, y);
             });
 
     // present
     launchpad.flip();
 }
 
-// converts gu
-uchar SequenceScreen::to_color(unsigned x, unsigned y) {
-    uchar s = view[x][y];
+// converts cell status info from given position to color for rendering
+uchar SequenceScreen::to_color(View &v, unsigned x, unsigned y) {
+    uchar s = v[x][y];
 
     uchar col = Launchpad::CL_BLACK;
 

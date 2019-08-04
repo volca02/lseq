@@ -18,9 +18,9 @@ public:
     void run() {
         // NOTE: Temporary. Will be replaced by a mutex probably.
         // TODO: watch for C-c and terminate cleanly here
-        std::cout << "\nReading MIDI input ... press <enter> to quit.\n";
-        char input;
-        std::cin.get(input);
+        while (true) {
+            ui.update();
+        }
     }
 
 private:
