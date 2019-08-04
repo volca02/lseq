@@ -3,6 +3,7 @@
 #include <RtMidi.h>
 #include <functional>
 
+#include "common.h"
 #include "error.h"
 
 // DOCS HERE https://d2xhy469pqj8rc.cloudfront.net/sites/default/files/novation/downloads/4080/launchpad-programmers-reference.pdf
@@ -12,8 +13,8 @@
 // Launchpad MK1. Not doing any abstractions here, but refactor to support other machines should not be hard
 class Launchpad {
 public:
-    const unsigned MATRIX_W = 8;
-    const unsigned MATRIX_H = 8;
+    static const unsigned MATRIX_W = 8;
+    static const unsigned MATRIX_H = 8;
 
     enum ButtonCode {
         BC_UP    = 200,
@@ -32,6 +33,20 @@ public:
         BTN_TOP,   // Top row button (x 0..7 gives the button)
     };
 
+    // some basic colors (not all)
+    enum Colors {
+        CL_BLACK = 0,
+        CL_GREEN = 0x30,
+        CL_RED   = 0x03,
+        CL_GREEN_M  = 0x20,
+        CL_RED_M    = 0x02,
+        CL_GREEN_L  = 0x10,
+        CL_RED_L    = 0x01,
+        CL_AMBER    = 0x33,
+        CL_AMBER_L  = 0x11,
+        CL_YELLOW   = 0x32
+    };
+
     // converted keypress -
     struct KeyEvent {
         ButtonType type;
@@ -40,11 +55,12 @@ public:
         bool press; // true for press, false for release
     };
 
-    using uchar = unsigned char;
+    // NOTE: This callback is called from a different thread, so use atomics/mutexes
+    using KeyCb = std::function<void(Launchpad&, const KeyEvent&)>;
 
-    using Callback = std::function<void(Launchpad&, const KeyEvent&)>;
     // for fast_fill, this is a callback to get field color based on coords
     using ColorCb  = std::function<uchar(unsigned,unsigned)>;
+
 
     Launchpad(const Launchpad &) = delete;
 
@@ -77,7 +93,7 @@ public:
 
     ~Launchpad() { reset(); }
 
-    void set_callback(Callback c) {
+    void set_callback(KeyCb c) {
         callback = c;
     }
 
@@ -118,7 +134,7 @@ public:
         send_msg({0xB0, 0x01, 0x0});
     }
 
-    static uchar color(uchar r, uchar g) {
+    static constexpr uchar color(uchar r, uchar g) {
         return std::min(g, uchar(3)) << 4 | std::min(r, uchar(3));
     }
 
@@ -231,7 +247,7 @@ protected:
         return (name.rfind("Launchpad:", 0) == 0);
     }
 
-    Callback callback;
+    KeyCb callback;
     RtMidiIn midi_in;
     RtMidiOut midi_out;
     bool cur_page;

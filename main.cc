@@ -1,8 +1,8 @@
 #include <iostream>
 
-#include "sequencer.h"
+#include "lseq.h"
 
 int main() {
-    Sequencer s;
+    LSeq s;
     s.run();
 }
