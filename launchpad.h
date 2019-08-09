@@ -1,7 +1,9 @@
 #pragma once
 
-#include <RtMidi.h>
 #include <functional>
+#include <atomic>
+
+#include <RtMidi.h>
 
 #include "common.h"
 #include "error.h"
@@ -61,12 +63,52 @@ public:
     // for fast_fill, this is a callback to get field color based on coords
     using ColorCb  = std::function<uchar(unsigned,unsigned)>;
 
+    /** packed thread safe dirtiness flags for the grid part
+     * we know each row can be represented by 8 bits, so half of the grid is uint32_t
+     */
+    struct Bitmap {
+
+        void mark(unsigned x, unsigned y) {
+            if (x >= MATRIX_W) return;
+            if (y >= MATRIX_H) return;
+
+            unsigned bank = y/4;
+            unsigned bit  = x + (y & 0x03) * 8; // max is 7 + 3*8 == 31
+
+            bits[bank] |= 1 << bit;
+        }
+
+        // iterates the bitfields and calls a callback
+        template<typename CbT>
+        void iterate(CbT cb) const {
+            for (unsigned x = 0; x < MATRIX_W; ++x) {
+                for (unsigned y = 0; y < MATRIX_H; ++y) {
+                    unsigned bank = y/4;
+                    unsigned bit  = x + (y & 0x03) * 8; // max is 7 + 3*8 == 31
+
+                    if (bits[bank] & (1 << bit)) cb(x, y);
+                }
+            }
+        }
+
+        void clear() {
+            bits[0] = 0;
+            bits[1] = 0;
+        }
+
+        bool has_value() const {
+            return (bits[0] | bits[1]) != 0;
+        }
+
+        uint32_t bits[2] = {0x0,0x0};
+    };
+
 
     Launchpad(const Launchpad &) = delete;
 
-    Launchpad() : cur_page(false) {
-        // search for launchpad device. String name is "Launchpad:Launchpad MIDI 1 32:0"
-        int port = findLaunchpad();
+    Launchpad(int port) : cur_page(false) {
+        if (!matchName(midi_in.getPortName(port)))
+            throw Exception("Given port is not Launchpad");
 
         if (port < 0)
             throw Exception("Cannot find Launchpad");
@@ -153,6 +195,26 @@ public:
         }
     }
 
+
+    /** Sets color of the button btn (as specified in KeyEvent code) */
+    void set_color(unsigned btn, uchar col) {
+        if (btn >= 200) { // automap
+            if (btn > 207)
+                return; // err!
+
+            send_msg({0xB0, (uchar)(btn - 96), col});
+        } else {
+            send_msg({0x90, (uchar)btn, col});
+        }
+    }
+
+    static unsigned coord_to_btn(unsigned x, unsigned y) {
+        return x | y << 4;
+    }
+
+    static bool matchName(const std::string &name) {
+        return (name.rfind("Launchpad:", 0) == 0);
+    }
 
 protected:
     void send_msg(const std::vector<uchar> &buf) {
@@ -241,10 +303,6 @@ protected:
             callback(*this, {type, button, cx, cy, press});
         }
 
-    }
-
-    bool matchName(const std::string &name) {
-        return (name.rfind("Launchpad:", 0) == 0);
     }
 
     KeyCb callback;

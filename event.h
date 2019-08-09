@@ -89,9 +89,9 @@ public:
     }
 
 protected:
-    ticks tick;
-    uchar status;
-    uchar data[2];
+    ticks tick = 0;
+    uchar status = 0;
+    uchar data[2]= {0x0, 0x0};
     bool  marked  = false;
     Event *linked = nullptr;
 };

@@ -1,5 +1,8 @@
 #pragma once
 
+#include <map>
+#include <condition_variable>
+
 #include "launchpad.h"
 #include "ui.h"
 
@@ -7,9 +10,9 @@
  */
 class LSeq {
 public:
-    // TODO: Scan the midi bus, instantiate UI views for all Launchpads found
     // TODO: Find available output midi devices - or let user specify
-    LSeq() : l(), ui(l) {
+    LSeq() {
+        find_and_spawn();
     }
 
     ~LSeq() {
@@ -19,12 +22,52 @@ public:
         // NOTE: Temporary. Will be replaced by a mutex probably.
         // TODO: watch for C-c and terminate cleanly here
         while (true) {
-            ui.update();
+            std::unique_lock<std::mutex> lk(m);
+            cv.wait(lk);
+
+            if (do_exit) break;
+
+            // iterate uis and update them
+            for (auto &u : launchpads)
+                u.second.ui.update();
         }
     }
 
+    void wake_up() {
+        cv.notify_one();
+    };
+
+    void exit() {
+        do_exit = true;
+        cv.notify_one();
+    }
+
 private:
-    // TODO: support any no. of devices by scanning them and incoroprating them.
-    Launchpad l;
-    UI ui;
+    // finds all launchpads and spawns UI for them
+    void find_and_spawn() {
+        RtMidiIn midi;
+
+        for (unsigned int i = 0; i < midi.getPortCount(); i++) {
+            try {
+                if (Launchpad::matchName(midi.getPortName(i))) {
+                    launchpads.try_emplace(i, *this, i);
+                }
+            } catch (RtMidiError &error) {
+                error.printMessage();
+            }
+        }
+    }
+
+    struct LaunchpadUI {
+        LaunchpadUI(LSeq &lseq, int port) : l(port), ui(lseq, l) {}
+
+        Launchpad l;
+        UI ui;
+    };
+
+
+    std::mutex m;
+    std::atomic<bool> do_exit = false;
+    std::map<int, LaunchpadUI> launchpads;
+    std::condition_variable cv;
 };

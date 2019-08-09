@@ -45,6 +45,13 @@ public:
 
     ticks get_step() const { return step; }
 
+    void scale(int scale) {
+        for (;scale < 0;++scale)
+            scale_down();
+        for (;scale > 0;--scale)
+            scale_up();
+    }
+
     void set_step(ticks s) {
         step = s;
     }
@@ -106,7 +113,7 @@ public:
     bool is_scale_mark(int y) {
         // mark all Cs by default
         long r = offset + mtx_h - 1 - y;
-        return (r % 12 == 0);
+        return r % 12 == 0;
     }
 
 protected:

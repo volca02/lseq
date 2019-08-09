@@ -33,6 +33,8 @@ public:
 
     virtual void update() {};
 
+    virtual void wake_up();
+
 protected:
     using mutex = std::mutex;
     using lock  = std::scoped_lock<std::mutex>;
@@ -86,8 +88,10 @@ class SequenceScreen : public UIScreen {
 public:
     // default to quarter note view...
     SequenceScreen(UI &ui)
-        : UIScreen(ui), time_scaler(0, PPQN),
-          note_scaler(NOTE_C3, Launchpad::MATRIX_H)
+        : UIScreen(ui)
+        , updates(this)
+        , time_scaler(0, PPQN)
+        , note_scaler(NOTE_C3, Launchpad::MATRIX_H)
     {}
 
     virtual ScreenType get_type() const { return SCR_SEQUENCE; };
@@ -103,17 +107,59 @@ public:
 private:
     using View = uchar[Launchpad::MATRIX_W][Launchpad::MATRIX_H];
 
-    void mark_dirty() { dirty = true; } // TODO: make this deffered
+    // total repaint of the view
     void repaint();
+
+    // updates dirty parts of the grid onl
+    void paint();
+
+    // clears up the view - prepares it to be filled with notes
     void clear_view();
 
     // converts view state for given coords to color for rendering
     uchar to_color(View &v, unsigned x, unsigned y);
 
+    uchar bg_flags(unsigned x, unsigned y);
+
     Sequence *sequence = nullptr;
 
-    bool shift = false; // mixer key status
-    std::atomic<bool> dirty = true;  // needs repaint?
+    bool shift = false; // mixer key status TODO: make it thread safe?
+
+    // contains all events accumulated
+    struct UpdateBlock {
+        UpdateBlock(SequenceScreen *s = nullptr) : owner(s) {}
+
+        void clear() {
+            time_shift = 0;
+            time_scale = 0;
+            note_shift = 0;
+            grid.clear();
+            dirty = false;
+        }
+
+        void mark_dirty() {
+            dirty = true;
+            if (owner) owner->wake_up();
+        }
+
+        UpdateBlock &operator=(UpdateBlock &o) {
+            time_shift = o.time_shift;
+            time_scale = o.time_scale;
+            note_shift = o.note_shift;
+            grid = o.grid;
+            return *this;
+        }
+
+        SequenceScreen *owner;
+        std::atomic<bool> dirty;
+        int time_shift = 0;
+        int time_scale = 0;
+        int note_shift = 0;
+        Launchpad::Bitmap grid; // any pressed button is stored here
+    };
+
+
+    UpdateBlock updates;
 
     TimeScaler time_scaler;
     NoteScaler note_scaler;
@@ -134,8 +180,9 @@ private:
 
 class UI {
 public:
-    UI(Launchpad &l)
-        : launchpad(l)
+    UI(LSeq &owner, Launchpad &l)
+        : owner(owner)
+        , launchpad(l)
         , project_screen(*this)
         , track_screen(*this)
         , sequence_screen(*this)
@@ -171,6 +218,9 @@ public:
             current_screen->update();
     }
 
+    // causes the main loop to wake up from sleep
+    void wake_up();
+
 private:
     friend class UIScreen;
 
@@ -187,6 +237,7 @@ private:
         }
     }
 
+    LSeq &owner;
     Launchpad &launchpad;
 
     // various screens
