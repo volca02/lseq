@@ -2,7 +2,6 @@
 
 #include <atomic>
 
-
 #include "common.h"
 #include "launchpad.h"
 #include "sequence.h"
@@ -96,7 +95,7 @@ public:
 
     virtual ScreenType get_type() const { return SCR_SEQUENCE; };
 
-    void set_active_sequence(Sequence *seq) { sequence = seq; }
+    void set_active_sequence(Sequence *seq);
 
     void on_key(const Launchpad::KeyEvent &ev) override;
     void on_enter() override;
@@ -188,34 +187,21 @@ public:
         , sequence_screen(*this)
         , current_screen(nullptr)
     {
-        launchpad.set_callback(
-                [this](Launchpad &l, const Launchpad::KeyEvent &ev) { cb(l, ev); });
-
         // set current screen to project screen
         set_screen(SCR_SESSION);
 
         sequence_screen.set_active_sequence(&sdef);
+
+        launchpad.set_callback(
+                [this](Launchpad &l, const Launchpad::KeyEvent &ev) { cb(l, ev); });
     }
 
-    void set_screen(ScreenType t) {
-        UIScreen *next = nullptr;
-
-        switch (t) {
-        case SCR_SESSION: next = &project_screen; break;
-        case SCR_TRACK: next = &track_screen; break;
-        case SCR_SEQUENCE: next = &sequence_screen; break;
-        }
-
-        if (next != current_screen) {
-            if (current_screen) current_screen->on_exit();
-            if (next) next->on_enter();
-            current_screen = next;
-        }
-    }
+    void set_screen(ScreenType t);
+    UIScreen *get_current_screen() const;
 
     void update() {
-        if (current_screen)
-            current_screen->update();
+        UIScreen *screen = get_current_screen();
+        if (screen) screen->update();
     }
 
     // causes the main loop to wake up from sleep
@@ -223,6 +209,9 @@ public:
 
 private:
     friend class UIScreen;
+
+    UI(UI &o) = delete;
+    UI &operator=(UI &o) = delete;
 
     void cb(Launchpad &l, const Launchpad::KeyEvent &ev) {
         // we have top 4 buttons on the right reserved to screen change
@@ -233,7 +222,8 @@ private:
         default:
             // event dispatcher. The events get distributed to currently selected UI
             // screen
-            if (current_screen) current_screen->on_key(ev);
+            UIScreen *screen = get_current_screen();
+            if (screen) screen->on_key(ev);
         }
     }
 
@@ -246,5 +236,7 @@ private:
     Sequence sdef; // TODO: Remove, just temporary sequence
     SequenceScreen sequence_screen;
 
+    // current screen has to be locked via mutex while accesing
+    mutable std::mutex mut;
     UIScreen *current_screen;
 };

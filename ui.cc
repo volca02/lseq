@@ -102,7 +102,7 @@ void SequenceScreen::on_key(const Launchpad::KeyEvent &ev) {
         case Launchpad::BC_DOWN : updates.note_shift++; updates.mark_dirty(); return;
         }
 
-        if (sequence && ev.type == Launchpad::BTN_GRID) {
+        if (ev.type == Launchpad::BTN_GRID) {
             updates.grid.mark(ev.x, ev.y);
             updates.mark_dirty();
         }
@@ -154,7 +154,7 @@ void SequenceScreen::update() {
         dirty = true;
     }
 
-    bool flip = dirty;
+    bool flip = false;
 
     // update from note press bitmap
     b.grid.iterate([&](unsigned x, unsigned y) {
@@ -162,11 +162,27 @@ void SequenceScreen::update() {
                        ticks s = time_scaler.get_step();
                        uchar n = note_scaler.to_note(y);
 
+                       // set to other value if we have continuations
+                       uchar last_x = x;
+
                        // see the status of the current field
                        if (view[x][y] & FS_HAS_NOTE) {
                            sequence->mark_range(t, t+s, n, n+1);
                            sequence->remove_marked();
+                           uchar c = view[x][y];
                            view[x][y] = bg_flags(x, y); // clear note position
+
+                           // clear continuations
+                           if (c & FS_CONT) {
+                               for (uchar xc = x + 1; xc < Launchpad::MATRIX_W; ++xc)
+                               {
+                                   // stop on no continuations or on a new note
+                                   if (view[xc][y] & FS_CONT == 0) break;
+                                   if (view[xc][y] & FS_HAS_NOTE) break;
+                                   view[xc][y] = bg_flags(x, y);
+                                   last_x = xc;
+                               }
+                           }
                            // TODO: also need to clear continuations - so need to iterate erased notes and see their lengths!
                        } else {
                            sequence->add_note(t, time_scaler.get_step(), n);
@@ -175,8 +191,12 @@ void SequenceScreen::update() {
 
                        // not dirty, also re-paint
                        if (!dirty) {
-                           unsigned coord = Launchpad::coord_to_btn(x, y);
-                           launchpad.set_color(coord, to_color(view, x, y));
+                           for (uchar xc = x; xc <= last_x; ++xc) {
+                               unsigned coord = Launchpad::coord_to_btn(xc, y);
+                               launchpad.set_color(coord, to_color(view, xc, y));
+                           }
+
+
                            flip = true;
                        }
                   });
@@ -188,8 +208,6 @@ void SequenceScreen::update() {
 }
 
 void SequenceScreen::paint() {
-
-
 }
 
 void SequenceScreen::repaint() {
@@ -225,29 +243,29 @@ void SequenceScreen::repaint() {
         if (y < 0) continue;
         if (y >= Launchpad::MATRIX_H) continue;
 
-        // does the note come into the view at all?
         if (x + l < 0) continue;
         if (x >= Launchpad::MATRIX_W) continue;
 
-        uchar c = view[x][y];
+        if (x >= 0) {
+            uchar c = view[x][y];
 
-        if (c & FS_HAS_NOTE)
-            c |= FS_MULTIPLE;
-        else
+            if (c & FS_HAS_NOTE) c |= FS_MULTIPLE;
+
             c |= FS_HAS_NOTE;
 
-        // if the note timing is not accurate, mark it down
-        if (!accurate)
-            c |= FS_INACCURATE;
+            // if the note timing is not accurate, mark it down
+            if (!accurate) c |= FS_INACCURATE;
 
-        // mark continution
-        for (long c = 1; c < l; ++c) {
-            if (x + c < 0) continue;
-            if (x + c > Launchpad::MATRIX_W) break;
-            view[x + c][y] |= FS_CONT;
+            view[x][y] = c;
         }
 
-        view[x][y] = c;
+        // mark continution, including our base note (handy for updates)
+        for (long c = 0; c < l; ++c) {
+            long xc = x + c;
+            if (xc < 0) continue;
+            if (xc >= Launchpad::MATRIX_W) break;
+            view[xc][y] |= FS_CONT;
+        }
     }
 
     // render the UI part
@@ -255,6 +273,8 @@ void SequenceScreen::repaint() {
             [this](unsigned x, unsigned y) {
                 return to_color(view, x, y);
             });
+
+    launchpad.flip(true);
 }
 
 // converts cell status info from given position to color for rendering
@@ -290,9 +310,36 @@ uchar SequenceScreen::bg_flags(unsigned x, unsigned y) {
     return note_scaler.is_scale_mark(y) ? FS_SCALE_MARK : 0;
 }
 
+void SequenceScreen::set_active_sequence(Sequence *seq) {
+    sequence = seq;
+}
+
 /* -------------------------------------------------------------------------- */
 /* ---- UI ------------------------------------------------------------------ */
 /* -------------------------------------------------------------------------- */
 void UI::wake_up() {
     owner.wake_up();
+}
+
+
+void UI::set_screen(ScreenType t) {
+    std::scoped_lock<std::mutex> l(mut);
+    UIScreen *next = nullptr;
+
+    switch (t) {
+    case SCR_SESSION: next = &project_screen; break;
+    case SCR_TRACK: next = &track_screen; break;
+    case SCR_SEQUENCE: next = &sequence_screen; break;
+    }
+
+    if (next != current_screen) {
+        if (current_screen) current_screen->on_exit();
+        if (next) next->on_enter();
+        current_screen = next;
+    }
+}
+
+UIScreen *UI::get_current_screen() const {
+    std::scoped_lock<std::mutex> l(mut);
+    return current_screen;
 }

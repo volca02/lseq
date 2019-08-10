@@ -14,7 +14,8 @@ public:
     TimeScaler(ticks offset, ticks step) : offset(offset), step(step) {}
 
     long to_quantum(ticks t) {
-        return (t - offset) / step;
+        // the cast is there to ensure we handle negative values too
+        return (static_cast<long>(t) - offset) / static_cast<long>(step);
     }
 
     ticks to_ticks(long quantum) {
@@ -39,6 +40,8 @@ public:
             offset -= step;
         else if (direction > 0)
             offset += step;
+
+        if (offset < 0) offset = 0;
     }
 
     long get_offset() const { return offset; }

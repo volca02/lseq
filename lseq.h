@@ -19,7 +19,6 @@ public:
     }
 
     void run() {
-        // NOTE: Temporary. Will be replaced by a mutex probably.
         // TODO: watch for C-c and terminate cleanly here
         while (true) {
             std::unique_lock<std::mutex> lk(m);
@@ -43,7 +42,7 @@ public:
     }
 
 private:
-    // finds all launchpads and spawns UI for them
+    // finds all launchpads and spawns UIs for them
     void find_and_spawn() {
         RtMidiIn midi;
 
@@ -60,6 +59,10 @@ private:
 
     struct LaunchpadUI {
         LaunchpadUI(LSeq &lseq, int port) : l(port), ui(lseq, l) {}
+
+        // not copyable. just to be sure here
+        LaunchpadUI(LaunchpadUI &o) = delete;
+        LaunchpadUI &operator=(LaunchpadUI &o) = delete;
 
         Launchpad l;
         UI ui;

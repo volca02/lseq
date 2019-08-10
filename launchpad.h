@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <mutex>
 #include <atomic>
 
 #include <RtMidi.h>
@@ -15,14 +16,16 @@
 // Launchpad MK1. Not doing any abstractions here, but refactor to support other machines should not be hard
 class Launchpad {
 public:
+    using lock  = std::scoped_lock<std::mutex>;
+
     static const unsigned MATRIX_W = 8;
     static const unsigned MATRIX_H = 8;
 
     enum ButtonCode {
-        BC_UP    = 200,
-        BC_DOWN  = 201,
-        BC_LEFT  = 202,
-        BC_RIGHT = 203,
+        BC_UP       = 200,
+        BC_DOWN     = 201,
+        BC_LEFT     = 202,
+        BC_RIGHT    = 203,
         BC_SESSION  = 204,
         BC_USER1    = 205,
         BC_USER2    = 206,
@@ -30,16 +33,16 @@ public:
     };
 
     enum ButtonType {
-        BTN_GRID, // Any grid button (x,y coordinates will be ginen)
-        BTN_SIDE, // Any right side button (y 0..7 gives the button)
-        BTN_TOP,   // Top row button (x 0..7 gives the button)
+        BTN_GRID = 1, // Any grid button (x,y coordinates will be ginen)
+        BTN_SIDE,     // Any right side button (y 0..7 gives the button)
+        BTN_TOP,      // Top row button (x 0..7 gives the button)
     };
 
     // some basic colors (not all)
     enum Colors {
-        CL_BLACK = 0,
-        CL_GREEN = 0x30,
-        CL_RED   = 0x03,
+        CL_BLACK    = 0x00,
+        CL_GREEN    = 0x30,
+        CL_RED      = 0x03,
         CL_GREEN_M  = 0x20,
         CL_RED_M    = 0x02,
         CL_GREEN_L  = 0x10,
@@ -58,7 +61,7 @@ public:
     };
 
     // NOTE: This callback is called from a different thread, so use atomics/mutexes
-    using KeyCb = std::function<void(Launchpad&, const KeyEvent&)>;
+    using KeyCb    = std::function<void(Launchpad&, const KeyEvent&)>;
 
     // for fast_fill, this is a callback to get field color based on coords
     using ColorCb  = std::function<uchar(unsigned,unsigned)>;
@@ -136,6 +139,7 @@ public:
     ~Launchpad() { reset(); }
 
     void set_callback(KeyCb c) {
+        lock l(mtx);
         callback = c;
     }
 
@@ -279,8 +283,14 @@ protected:
         ButtonType type = BTN_GRID;
         bool press = message->at(2) > 0;
 
+        KeyCb cback;
+        {
+            lock l(mtx);
+            cback = callback;
+        }
+
         // no cback, no work
-        if (!callback) return;
+        if (!cback) return;
 
         if (message->at(0) == 0x90) {
             button = message->at(1);
@@ -290,7 +300,7 @@ protected:
             cx = button & 0x0F;
             cy = button >> 4;
 
-            callback(*this, {type, button, cx, cy, press});
+            cback(*this, {type, button, cx, cy, press});
         }
 
         if (message->at(0) == 0xB0) {
@@ -300,10 +310,12 @@ protected:
             cx = button - 200;
             cy = 0;
 
-            callback(*this, {type, button, cx, cy, press});
+            cback(*this, {type, button, cx, cy, press});
         }
 
     }
+
+    std::mutex mtx;
 
     KeyCb callback;
     RtMidiIn midi_in;
