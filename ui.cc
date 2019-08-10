@@ -98,8 +98,8 @@ void SequenceScreen::on_key(const Launchpad::KeyEvent &ev) {
         case Launchpad::BC_LEFT : updates.time_shift--; updates.mark_dirty(); return;
         case Launchpad::BC_RIGHT: updates.time_shift++; updates.mark_dirty(); return;
         // TODO: Use note scaler here
-        case Launchpad::BC_UP   : updates.note_shift--; updates.mark_dirty(); return;
-        case Launchpad::BC_DOWN : updates.note_shift++; updates.mark_dirty(); return;
+        case Launchpad::BC_DOWN : updates.note_shift--; updates.mark_dirty(); return;
+        case Launchpad::BC_UP   : updates.note_shift++; updates.mark_dirty(); return;
         }
 
         if (ev.type == Launchpad::BTN_GRID) {
