@@ -71,8 +71,9 @@ public:
 
     // TODO: triplet view
 protected:
-    long offset;
-    ticks step;
+    bool triplet = false;
+    long offset = 0;
+    ticks step = PPQN; // default to quarter notes
 };
 
 // scales and also drum sequences...

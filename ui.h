@@ -89,7 +89,7 @@ public:
     SequenceScreen(UI &ui)
         : UIScreen(ui)
         , updates(this)
-        , time_scaler(0, PPQN)
+        , time_scaler(0, PPQN) // we default to quarter note steps
         , note_scaler(NOTE_C3, Launchpad::MATRIX_H)
     {}
 
@@ -132,7 +132,8 @@ private:
             time_shift = 0;
             time_scale = 0;
             note_shift = 0;
-            grid.clear();
+            grid_on.clear();
+            grid_off.clear();
             dirty = false;
         }
 
@@ -145,7 +146,8 @@ private:
             time_shift = o.time_shift;
             time_scale = o.time_scale;
             note_shift = o.note_shift;
-            grid = o.grid;
+            grid_on = o.grid_on;
+            grid_off = o.grid_off;
             return *this;
         }
 
@@ -154,11 +156,16 @@ private:
         int time_shift = 0;
         int time_scale = 0;
         int note_shift = 0;
-        Launchpad::Bitmap grid; // any pressed button is stored here
+        Launchpad::Bitmap grid_on;  // any pressed button is stored here
+        Launchpad::Bitmap grid_off; // any pressed button is stored here
     };
 
+    void add_note(unsigned x, unsigned y, bool repaint);
+    void remove_note(unsigned x, unsigned y, bool repaint);
 
-    UpdateBlock updates;
+    UpdateBlock updates; // current updates
+    Launchpad::Bitmap held_buttons;
+    Launchpad::Bitmap modified_notes;
 
     TimeScaler time_scaler;
     NoteScaler note_scaler;

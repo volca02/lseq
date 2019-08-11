@@ -91,19 +91,24 @@ void SequenceScreen::on_key(const Launchpad::KeyEvent &ev) {
     if (!shift) {
         // NOTE: implement long-press events here
 
-        // no long-press events beyond this point
-        if (!ev.press) return;
-
-        switch (ev.code) {
-        case Launchpad::BC_LEFT : updates.time_shift--; updates.mark_dirty(); return;
-        case Launchpad::BC_RIGHT: updates.time_shift++; updates.mark_dirty(); return;
-        // TODO: Use note scaler here
-        case Launchpad::BC_DOWN : updates.note_shift--; updates.mark_dirty(); return;
-        case Launchpad::BC_UP   : updates.note_shift++; updates.mark_dirty(); return;
+        if (ev.press) {
+            // only button press events here, no release events
+            switch (ev.code) {
+            case Launchpad::BC_LEFT : updates.time_shift--; updates.mark_dirty(); return;
+            case Launchpad::BC_RIGHT: updates.time_shift++; updates.mark_dirty(); return;
+                // TODO: Use note scaler here
+            case Launchpad::BC_DOWN : updates.note_shift--; updates.mark_dirty(); return;
+            case Launchpad::BC_UP   : updates.note_shift++; updates.mark_dirty(); return;
+            }
         }
 
         if (ev.type == Launchpad::BTN_GRID) {
-            updates.grid.mark(ev.x, ev.y);
+            // on and off button presses are distinct to allow for long press and button combos
+            if (ev.press)
+                updates.grid_on.mark(ev.x, ev.y);
+            else
+                updates.grid_off.mark(ev.x, ev.y);
+
             updates.mark_dirty();
         }
     } else {
@@ -156,50 +161,30 @@ void SequenceScreen::update() {
 
     bool flip = false;
 
+    // update our held buttons with grid_on, grid_off bits
+    held_buttons |= b.grid_on;
+    held_buttons &= ~b.grid_off;
+
     // update from note press bitmap
-    b.grid.iterate([&](unsigned x, unsigned y) {
-                       ticks t = time_scaler.to_ticks(x);
-                       ticks s = time_scaler.get_step();
-                       uchar n = note_scaler.to_note(y);
+    b.grid_on.iterate([&](unsigned x, unsigned y) {
+        // see the status of the current field, if there is a note don't add
+        // another one
+        if ((view[x][y] & FS_HAS_NOTE) == 0) {
+            add_note(x, y, !dirty);
+            modified_notes.mark(x, y);
+        }
 
-                       // set to other value if we have continuations
-                       uchar last_x = x;
+        flip = !dirty;
+    });
 
-                       // see the status of the current field
-                       if (view[x][y] & FS_HAS_NOTE) {
-                           sequence->mark_range(t, t+s, n, n+1);
-                           sequence->remove_marked();
-                           uchar c = view[x][y];
-                           view[x][y] = bg_flags(x, y); // clear note position
+    b.grid_off.iterate([&](unsigned x, unsigned y) {
+        if ((view[x][y] & FS_HAS_NOTE) && !modified_notes.get(x, y)) {
+            remove_note(x, y, !dirty);
+        }
 
-                           // clear continuations
-                           if (c & FS_CONT) {
-                               for (uchar xc = x + 1; xc < Launchpad::MATRIX_W; ++xc)
-                               {
-                                   // stop on no continuations or on a new note
-                                   if (view[xc][y] & FS_CONT == 0) break;
-                                   if (view[xc][y] & FS_HAS_NOTE) break;
-                                   view[xc][y] = bg_flags(x, y);
-                                   last_x = xc;
-                               }
-                           }
-                           // TODO: also need to clear continuations - so need to iterate erased notes and see their lengths!
-                       } else {
-                           sequence->add_note(t, time_scaler.get_step(), n);
-                           view[x][y] |= FS_HAS_NOTE;
-                       }
-
-                       // not dirty, also re-paint
-                       if (!dirty) {
-                           for (uchar xc = x; xc <= last_x; ++xc) {
-                               unsigned coord = Launchpad::coord_to_btn(xc, y);
-                               launchpad.set_color(coord, to_color(view, xc, y));
-                           }
-
-
-                           flip = true;
-                       }
-                  });
+        modified_notes.unmark(x, y);
+        flip = !dirty;
+    });
 
     if (dirty) repaint();
 
@@ -312,6 +297,52 @@ uchar SequenceScreen::bg_flags(unsigned x, unsigned y) {
 
 void SequenceScreen::set_active_sequence(Sequence *seq) {
     sequence = seq;
+}
+
+void SequenceScreen::add_note(unsigned x, unsigned y, bool repaint) {
+    ticks t = time_scaler.to_ticks(x);
+    ticks s = time_scaler.get_step();
+    uchar n = note_scaler.to_note(y);
+
+    sequence->add_note(t, time_scaler.get_step(), n);
+    view[x][y] |= FS_HAS_NOTE;
+
+    if (repaint) {
+        unsigned btn = Launchpad::coord_to_btn(x, y);
+        launchpad.set_color(btn, to_color(view, x, y));
+    }
+}
+
+void SequenceScreen::remove_note(unsigned x, unsigned y, bool repaint) {
+    ticks t = time_scaler.to_ticks(x);
+    ticks s = time_scaler.get_step();
+    uchar n = note_scaler.to_note(y);
+
+    sequence->mark_range(t, t+s, n, n+1);
+    sequence->remove_marked();
+    uchar c = view[x][y];
+
+    view[x][y] = bg_flags(x, y); // clear note position
+
+    // set to other value if we have continuations
+    uchar last_x = x;
+
+    // clear continuations
+    if (c & FS_CONT) {
+        for (uchar xc = x + 1; xc < Launchpad::MATRIX_W; ++xc)
+        {
+            // stop on no continuations or on a new note
+            if (view[xc][y] & FS_CONT == 0) break;
+            if (view[xc][y] & FS_HAS_NOTE) break;
+            view[xc][y] = bg_flags(x, y);
+            last_x = xc;
+        }
+    }
+
+    for (uchar xc = x; xc <= last_x; ++xc) {
+        unsigned btn = Launchpad::coord_to_btn(xc, y);
+        launchpad.set_color(btn, to_color(view, xc, y));
+    }
 }
 
 /* -------------------------------------------------------------------------- */

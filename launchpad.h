@@ -70,6 +70,7 @@ public:
      * we know each row can be represented by 8 bits, so half of the grid is uint32_t
      */
     struct Bitmap {
+        Bitmap() = default;
 
         void mark(unsigned x, unsigned y) {
             if (x >= MATRIX_W) return;
@@ -79,6 +80,42 @@ public:
             unsigned bit  = x + (y & 0x03) * 8; // max is 7 + 3*8 == 31
 
             bits[bank] |= 1 << bit;
+        }
+
+        void unmark(unsigned x, unsigned y) {
+            if (x >= MATRIX_W) return;
+            if (y >= MATRIX_H) return;
+
+            unsigned bank = y/4;
+            unsigned bit  = x + (y & 0x03) * 8; // max is 7 + 3*8 == 31
+
+            bits[bank] &= ~(1 << bit);
+        }
+
+        bool get(unsigned x, unsigned y) {
+            if (x >= MATRIX_W) return false;
+            if (y >= MATRIX_H) return false;
+
+            unsigned bank = y/4;
+            unsigned bit  = x + (y & 0x03) * 8; // max is 7 + 3*8 == 31
+
+            return (bits[bank] & (1 << bit));
+        }
+
+        Bitmap &operator|=(const Bitmap &b) {
+            bits[0] |= b.bits[0];
+            bits[1] |= b.bits[1];
+            return *this;
+        }
+
+        Bitmap &operator&=(const Bitmap &b) {
+            bits[0] &= b.bits[0];
+            bits[1] &= b.bits[1];
+            return *this;
+        }
+
+        Bitmap operator~() const {
+            return {~bits[0],~bits[1]};
         }
 
         // iterates the bitfields and calls a callback
@@ -102,6 +139,9 @@ public:
         bool has_value() const {
             return (bits[0] | bits[1]) != 0;
         }
+
+    protected:
+        Bitmap(uint32_t a, uint32_t b) : bits{a,b} {}
 
         uint32_t bits[2] = {0x0,0x0};
     };
