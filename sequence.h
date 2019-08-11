@@ -18,7 +18,8 @@ public:
     void unmark_all();
 
     // adds a note into the sequence
-    void add_note(ticks start, ticks length, uchar note);
+    void add_note(ticks start, ticks length, uchar note,
+                  uchar velocity = DEFAULT_VELOCITY);
 
     // marks a specified note(s) from the sequence - by window (unmarks all first)
     void mark_range(ticks start, ticks end, uchar note_low, uchar note_hi);
@@ -52,7 +53,8 @@ protected:
     // unlocked versions of the public methods
     void _unmark_all();
     void _remove_marked();
-    void _add_note(ticks start, ticks length, uchar note);
+    // adds note, does NOT sort. _tidy is mandatory call before unlocking the sequence
+    void _add_note(ticks start, ticks length, uchar note, uchar velocity);
 
     // adds an event into the right sorted place in sequence
     void _add_event(const Event &ev);

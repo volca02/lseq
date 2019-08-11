@@ -140,6 +140,17 @@ public:
             return (bits[0] | bits[1]) != 0;
         }
 
+        uchar row(unsigned y) const {
+            uchar r = 0;
+            unsigned bank = y/4;
+            unsigned row = y & 0x03;
+            return (bits[bank] >> (row * 8)) & 0xFF;
+        }
+
+        explicit operator bool() const {
+            return has_value();
+        }
+
     protected:
         Bitmap(uint32_t a, uint32_t b) : bits{a,b} {}
 

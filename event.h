@@ -5,6 +5,8 @@
 // A single midi event
 class Event {
 public:
+    Event() : marked(false) {};
+
     enum Status {
         EV_STATUS_BIT       = 0x80,
         EV_NOTE_OFF         = 0x80,
@@ -30,11 +32,11 @@ public:
     void mark() { marked = true; }
     void unmark() { marked = false; }
 
-    uchar get_note() const { return data[1]; }
-    Event &set_note(uchar note) { data[1] = note & 0x7F; return *this; }
+    uchar get_note() const { return data[0]; }
+    Event &set_note(uchar note) { data[0] = note & 0x7F; return *this; }
 
-    uchar get_velocity() const { return data[2]; }
-    Event &set_velocity(uchar v) { data[2] = v & 0x7F; return *this;  }
+    uchar get_velocity() const { return data[1]; }
+    Event &set_velocity(uchar v) { data[1] = v & 0x7F; return *this;  }
 
     bool is_note_on() const { return status == EV_NOTE_ON; }
     bool is_note_off() const { return status == EV_NOTE_OFF; }
@@ -89,9 +91,9 @@ public:
     }
 
 protected:
-    ticks tick = 0;
-    uchar status = 0;
-    uchar data[2]= {0x0, 0x0};
+    ticks tick    = 0;
+    uchar status  = 0;
+    uchar data[2] = {0x0, 0x0};
     bool  marked  = false;
     Event *linked = nullptr;
 };

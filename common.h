@@ -9,6 +9,7 @@ const uchar NOTE_C3 = 60; // note numbers are in semitones
 const uchar NOTE_MAX = 127;
 
 // quantizes ticks based on offset and slope
+/** quantizes ticks based on offset and slope */
 class TimeScaler {
 public:
     TimeScaler(ticks offset, ticks step) : offset(offset), step(step) {}
@@ -125,3 +126,26 @@ protected:
     long mtx_h;
     ScaleMode mode;
 };
+
+inline int lowest_bit_set(uchar c) {
+    // 4 bit lookup
+    int nib[16] = {-1, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0};
+
+    if (c & 0xf)
+        return nib[c & 0xf];
+
+    if (c >> 4)
+        return nib[c >> 4] + 4;
+
+    return -1;
+}
+
+inline uchar nearest_lower_bit(uchar c, uchar pos) {
+    uchar cand = pos;
+
+    for (uchar o = 0; o < pos; ++o) {
+        if (c >> o) cand = o;
+    }
+
+    return cand;
+}

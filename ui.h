@@ -162,6 +162,7 @@ private:
 
     void add_note(unsigned x, unsigned y, bool repaint);
     void remove_note(unsigned x, unsigned y, bool repaint);
+    void set_note_lengths(unsigned x, unsigned y, unsigned len, bool repaint);
 
     UpdateBlock updates; // current updates
     Launchpad::Bitmap held_buttons;

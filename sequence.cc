@@ -6,11 +6,11 @@ void Sequence::unmark_all() {
     _unmark_all();
 }
 
-void Sequence::add_note(ticks start, ticks length, uchar note) {
+void Sequence::add_note(ticks start, ticks length, uchar note, uchar velocity) {
     // scope-lock the sequence
     lock l(mtx);
 
-    _add_note(start, length, note);
+    _add_note(start, length, note, velocity);
 
     _tidy();
 }
@@ -48,10 +48,12 @@ void Sequence::remove_marked() {
 void Sequence::set_length(ticks len) {
     lock l(mtx);
 
+    // TODO: Replace note ends only!
+
     for (auto &ev: events) {
         // construct a new event in place of the old one, with new length
         if (ev.is_marked() && ev.is_note_on()) {
-            _add_note(ev.get_ticks(), len, ev.get_note());
+            _add_note(ev.get_ticks(), len, ev.get_note(), ev.get_velocity());
         }
     }
 
@@ -61,6 +63,8 @@ void Sequence::set_length(ticks len) {
 
 // largerly inspired by seq24's verify_and_link
 void Sequence::_tidy() {
+    events.sort();
+
     for (auto &ev : events) {
         ev.clear_link();
         ev.unmark();
@@ -110,12 +114,14 @@ void Sequence::_remove_marked() {
     }
 }
 
-void Sequence::_add_note(ticks start, ticks length, uchar note) {
+void Sequence::_add_note(ticks start, ticks length, uchar note,
+                         uchar velocity)
+{
     Event ev;
 
     ev.set_status(Event::EV_NOTE_ON)
       .set_note(note)
-      .set_velocity(DEFAULT_VELOCITY)
+      .set_velocity(velocity)
       .set_ticks(start);
 
     _add_event(ev);
@@ -123,7 +129,7 @@ void Sequence::_add_note(ticks start, ticks length, uchar note) {
     // add corresponding note-off as well.
     ev.set_status(Event::EV_NOTE_OFF)
       .set_note(note)
-      .set_velocity(DEFAULT_VELOCITY)
+      .set_velocity(velocity)
       .set_ticks(start + length);
 
     _add_event(ev);
@@ -135,5 +141,4 @@ void Sequence::_unmark_all() {
 
 void Sequence::_add_event(const Event &ev) {
     events.push_front(ev);
-    events.sort();
 }

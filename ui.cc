@@ -161,20 +161,39 @@ void SequenceScreen::update() {
 
     bool flip = false;
 
-    // update our held buttons with grid_on, grid_off bits
-    held_buttons |= b.grid_on;
-    held_buttons &= ~b.grid_off;
-
     // update from note press bitmap
     b.grid_on.iterate([&](unsigned x, unsigned y) {
+        flip = !dirty;
+
         // see the status of the current field, if there is a note don't add
         // another one
+        // if buttons are held, see if any of them is in row
+        // if so, we just change length of the note and repaint
+        uchar row = held_buttons.row(y);
+
+        if (row) {
+            // there are buttons being held in the row where button event occured
+            // calculate the new length
+            // find the nearest lower order button that is pressed
+            unsigned near_x = nearest_lower_bit(row, x);
+
+            if (near_x < x) {
+                // enables us to toggle the last bit of length
+                unsigned toggle = view[x][y] & FS_CONT ? 0 : 1;
+                unsigned len = x - near_x + toggle;
+
+                // lengthen the notes
+                set_note_lengths(near_x, y, len, !dirty);
+                modified_notes.mark(near_x, y);
+                // already done, do not add a note now!
+                return;
+            }
+        }
+
         if ((view[x][y] & FS_HAS_NOTE) == 0) {
             add_note(x, y, !dirty);
             modified_notes.mark(x, y);
         }
-
-        flip = !dirty;
     });
 
     b.grid_off.iterate([&](unsigned x, unsigned y) {
@@ -185,6 +204,10 @@ void SequenceScreen::update() {
         modified_notes.unmark(x, y);
         flip = !dirty;
     });
+
+    // update our held buttons with grid_on, grid_off bits
+    held_buttons |= b.grid_on;
+    held_buttons &= ~b.grid_off;
 
     if (dirty) repaint();
 
@@ -337,6 +360,38 @@ void SequenceScreen::remove_note(unsigned x, unsigned y, bool repaint) {
             view[xc][y] = bg_flags(x, y);
             last_x = xc;
         }
+    }
+
+    for (uchar xc = x; xc <= last_x; ++xc) {
+        unsigned btn = Launchpad::coord_to_btn(xc, y);
+        launchpad.set_color(btn, to_color(view, xc, y));
+    }
+}
+
+void SequenceScreen::set_note_lengths(unsigned x, unsigned y, unsigned len, bool repaint) {
+    ticks t = time_scaler.to_ticks(x);
+    ticks s = time_scaler.get_step();
+    uchar n = note_scaler.to_note(y);
+
+    sequence->mark_range(t, t+s, n, n+1);
+    sequence->set_length(s * len);
+
+    uchar last_x = x;
+
+    for (uchar xc = x; xc < Launchpad::MATRIX_W; ++xc)
+    {
+        int cl = xc - x;
+        // stop on no continuations or on a new note
+        if ((view[xc][y] & FS_CONT == 0) && (cl >= len)) break;
+        if (view[xc][y] & FS_HAS_NOTE && xc != x) break; // next note already, break it up
+        // not over new length?
+        if (cl < len) {
+            if (len > 1)
+                view[xc][y] |= FS_CONT;
+        } else {
+            view[xc][y] = bg_flags(x, y);
+        }
+        last_x = xc;
     }
 
     for (uchar xc = x; xc <= last_x; ++xc) {
