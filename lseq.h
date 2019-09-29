@@ -6,13 +6,17 @@
 #include "launchpad.h"
 #include "ui.h"
 
+#include "jackmidi.h"
+
 /** Main class - holds stuff together
  */
-class LSeq {
+class LSeq : public jack::Client::Callback {
 public:
     // TODO: Find available output midi devices - or let user specify
-    LSeq() {
-        find_and_spawn();
+    LSeq() : client("lseq") {
+        client.set_callback(*this);
+        client.activate();
+        spawn();
     }
 
     ~LSeq() {
@@ -41,24 +45,32 @@ public:
         cv.notify_one();
     }
 
-private:
-    // finds all launchpads and spawns UIs for them
-    void find_and_spawn() {
-        RtMidiIn midi;
+    int process(jack_nframes_t nframes) override {
+        for (auto &u : launchpads) u.second.l.process(nframes);
+        return 0;
+    }
 
-        for (unsigned int i = 0; i < midi.getPortCount(); i++) {
-            try {
-                if (Launchpad::matchName(midi.getPortName(i))) {
-                    launchpads.try_emplace(i, *this, i);
-                }
-            } catch (RtMidiError &error) {
-                error.printMessage();
-            }
-        }
+private:
+    void spawn() {
+        launchpads.try_emplace(
+                0,
+                client,
+                0,
+                *this,
+                "a2j:Launchpad (capture): Launchpad MIDI 1",
+                "a2j:Launchpad (playback): Launchpad MIDI 1");
     }
 
     struct LaunchpadUI {
-        LaunchpadUI(LSeq &lseq, int port) : l(port), ui(lseq, l) {}
+        LaunchpadUI(jack::Client &client,
+                    int order,
+                    LSeq &lseq,
+                    const char *inport,
+                    const char *outport)
+                : l(client, "launchpad " + std::to_string(order)), ui(lseq, l)
+        {
+            l.connect(inport, outport);
+        }
 
         // not copyable. just to be sure here
         LaunchpadUI(LaunchpadUI &o) = delete;
@@ -72,5 +84,6 @@ private:
     std::mutex m;
     std::atomic<bool> do_exit = false;
     std::map<int, LaunchpadUI> launchpads;
+    jack::Client client;
     std::condition_variable cv;
 };

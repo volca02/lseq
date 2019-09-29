@@ -1,11 +1,21 @@
 #pragma once
 
+#include "error.h"
 #include "common.h"
 
 // A single midi event
 class Event {
 public:
     Event() : marked(false) {};
+
+    Event(const unsigned char *srcbuf, int srcsize) {
+        if (srcsize != 3)
+            throw Exception("Midi Event: Input source buffer size mismatch");
+
+        status = srcbuf[0];
+        data[0] = srcbuf[1];
+        data[1] = srcbuf[2];
+    }
 
     enum Status {
         EV_STATUS_BIT       = 0x80,

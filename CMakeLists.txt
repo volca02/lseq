@@ -4,6 +4,7 @@ project(launchpad)
 find_package(PkgConfig)
 
 pkg_check_modules(rtmidi REQUIRED IMPORTED_TARGET rtmidi)
+pkg_check_modules(jack REQUIRED IMPORTED_TARGET jack)
 
 add_executable(launchpad
     main.cc
@@ -14,5 +15,5 @@ add_executable(launchpad
     sequence.h
     event.h)
 
-target_link_libraries(launchpad PkgConfig::rtmidi)
+target_link_libraries(launchpad PkgConfig::rtmidi PkgConfig::jack)
 set_target_properties(launchpad PROPERTIES CXX_STANDARD 17)

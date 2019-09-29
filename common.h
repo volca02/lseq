@@ -1,5 +1,7 @@
 #pragma once
 
+#include <jack/types.h>
+
 using uchar = unsigned char;
 using ticks = unsigned long;
 
@@ -8,7 +10,22 @@ const ticks PPQN = 192; // ticks per quarter note
 const uchar NOTE_C3 = 60; // note numbers are in semitones
 const uchar NOTE_MAX = 127;
 
-// quantizes ticks based on offset and slope
+/*
+
+4*PPQN = PPWN
+PPQN
+[]   []   []   []
+
+Triplet mode
+PPQN*4/3
+[]    []    []
+
+3*PPQN*4/3 = PPWN
+
+*/
+
+// TODO: Switch to table based scaler
+// TODO: Switch offset to step based offset?
 /** quantizes ticks based on offset and slope */
 class TimeScaler {
 public:
@@ -140,6 +157,35 @@ inline int lowest_bit_set(uchar c) {
     return -1;
 }
 
+/*
+0000 -1
+0001  0
+0010  1
+0011  1
+0100  2
+0101  2
+0110  2
+0111  2
+1...  3
+..
+*/
+
+// essentially a logarithm
+inline int highest_bit_set(uchar c) {
+    // 4 bit lookup
+    int nib[16] = {-1, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3};
+
+    if (c >> 4)
+        return nib[c & 0xf];
+
+    if (c & 0xf)
+        return nib[c >> 4] + 4;
+
+    return -1;
+}
+
+// TODO: This is basically highest_bit_set(c & (0xff >> (7 - pos)))
+// which would probably be faster than a cycle with comparison
 inline uchar nearest_lower_bit(uchar c, uchar pos) {
     uchar cand = pos;
 

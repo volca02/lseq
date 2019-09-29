@@ -4,10 +4,13 @@
 #include <mutex>
 #include <atomic>
 
-#include <RtMidi.h>
+#include <iostream>
 
+
+#include "jackmidi.h"
 #include "common.h"
 #include "error.h"
+#include "event.h"
 
 // DOCS HERE https://d2xhy469pqj8rc.cloudfront.net/sites/default/files/novation/downloads/4080/launchpad-programmers-reference.pdf
 // NOTE: Launchpad implements double buffering - 0xB0, 0x00, 0x31 - then 0xB0, 0x00, 0x34 to swap pages
@@ -17,6 +20,8 @@
 class Launchpad {
 public:
     using lock  = std::scoped_lock<std::mutex>;
+
+    static constexpr size_t RINGBUFFER_SIZE = 1024 * sizeof(jack::MidiMessage);
 
     static const unsigned MATRIX_W = 8;
     static const unsigned MATRIX_H = 8;
@@ -160,27 +165,15 @@ public:
 
     Launchpad(const Launchpad &) = delete;
 
-    Launchpad(int port) : cur_page(false) {
-        if (!matchName(midi_in.getPortName(port)))
-            throw Exception("Given port is not Launchpad");
+    Launchpad(jack::Client &client, const std::string &prefix)
+        : cur_page(false)
+        , client(client)
+        , input_port(client, (prefix + ":in").c_str(), JACK_DEFAULT_MIDI_TYPE, JackPortIsInput)
+        , output_port(client, (prefix + ":out").c_str(), JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput)
+        , ringbuffer(RINGBUFFER_SIZE)
 
-        if (port < 0)
-            throw Exception("Cannot find Launchpad");
-
-        // Don't ignore sysex, timing, or active sensing messages.
-        // midiin->ignoreTypes(false, false, false);
-
-        midi_in.setCallback([](double deltatime,
-                               std::vector<uchar> *message,
-                               void *userData) {
-            static_cast<Launchpad *>(userData)->process_event(deltatime,
-                                                              message);
-        }, this);
-
-        // TODO: LOG("launchpad is on {}", port);
-        midi_in.openPort(port);
-        midi_out.openPort(port);
-
+    {
+        ringbuffer.mlock();
         reset();
         set_grid_layout();
         // initially we update 0 and display 2
@@ -190,7 +183,7 @@ public:
     ~Launchpad() { reset(); }
 
     void set_callback(KeyCb c) {
-        lock l(mtx);
+        lock l(cb_mtx);
         callback = c;
     }
 
@@ -268,12 +261,75 @@ public:
     }
 
     static bool matchName(const std::string &name) {
-        return (name.rfind("Launchpad:", 0) == 0);
+        return (name.rfind("Launchpad:", 0) == 0) ||
+            (name.rfind("Launchpad MIDI", 0) == 0);
+    }
+
+    /// called from the process callback in jack - we read/write midi events
+    /// here
+    void process(int nframes) {
+        // process all launchpads in the future...
+        jack::MidiBuffer buf = input_port.get_midi_buffer(nframes);
+
+        int nevents = buf.get_event_count();
+
+        for (int n = 0; n < nevents; ++n) {
+            jack_midi_event_t ev;
+            buf.get_event(ev, n);
+            process_event(ev.time, ev.buffer, ev.size);
+        }
+
+        // output part
+        // reserve events to be sent, all with zero relative time
+        jack::MidiBuffer jbuf = output_port.get_midi_buffer(nframes);
+        jbuf.clear();
+
+        // TODO: Could use jack ring buffer here!
+        jack_nframes_t last_frame_time = client.last_frame_time();
+
+        // iterate all available Midi messages in the ringbuffer
+        while (ringbuffer.read_space()) {
+            jack::MidiMessage msg;
+            size_t read = ringbuffer.peek((char *)&msg, sizeof(msg));
+
+            if (read != sizeof(msg)) {
+                // TODO: report problem!
+                ringbuffer.read_advance(read);
+                continue;
+            }
+
+            // if the time of the event is out of this window, break out of the loop
+            int t = msg.time + nframes - last_frame_time;
+
+            // sometimes we have an event queued that should already be out?!
+            if (t < 0) t = 0;
+            if (t >= nframes) break;
+
+            // skip the read bytes now
+            ringbuffer.read_advance(read);
+
+            jack_midi_data_t *evbuf = jbuf.event_reserve(t, 3);
+            std::copy(std::begin(msg.data), std::end(msg.data), evbuf);
+        }
+    }
+
+    void connect(const char *input, const char *output) {
+        input_port.connect_from(input);
+        output_port.connect_to(output);
     }
 
 protected:
-    void send_msg(const std::vector<uchar> &buf) {
-        midi_out.sendMessage(&buf);
+    void send_msg(jack::MidiMessage msg) {
+        // immediate send - use current frame time
+        msg.time = client.frame_time();
+
+        if (ringbuffer.write_space() < sizeof(msg)) {
+            // TODO: Report this in a sane way!
+            std::cerr << "FIX: Ringbuffer full!" << std::endl;
+            return;
+        }
+
+        ringbuffer.write(reinterpret_cast<const char*>(&msg), sizeof(msg));
     }
 
     // resets lighting on the whole pad. Called by default in ctor to
@@ -301,50 +357,32 @@ protected:
                           | (flash ? 8 : 0))});
     }
 
-    int findLaunchpad() {
-        int port = -1;
-
-        for (unsigned int i = 0; i < midi_in.getPortCount(); i++) {
-            try {
-                if (matchName(midi_in.getPortName(i))) {
-                    return i;
-                }
-            } catch (RtMidiError &error) {
-                error.printMessage();
-                return 1;
-            }
-        }
-
-        // TODO: LOG("Cannot find launchpad");
-        return -1;
-    }
-
     void process_event(double deltatime,
-                       std::vector<uchar> *message)
+                       uchar *data, int size)
     {
-        if (message->size() != 3) {
+        if (size != 3) {
             // TODO: log weird packet encounter
             return;
         }
-
 
         // got a keypress event. convert to key event and send out
         unsigned button = 0;
         unsigned cx = 0, cy = 0;
         ButtonType type = BTN_GRID;
-        bool press = message->at(2) > 0;
+        bool press = (data[2] > 0) && (data[0] != 0x80);
+
+        // printf("MSG: %02X %02X %02X\n", data[0], data[1], data[2]);
 
         KeyCb cback;
         {
-            lock l(mtx);
+            lock l(cb_mtx);
             cback = callback;
         }
 
         // no cback, no work
         if (!cback) return;
-
-        if (message->at(0) == 0x90) {
-            button = message->at(1);
+        if ((data[0] == 0x80) || (data[0] == 0x90)) {
+            button = data[1];
             // classify - every button with lower nibble == 8 is side button
             if (button & 0x0F == 0x08)
                 type = BTN_SIDE;
@@ -354,9 +392,9 @@ protected:
             cback(*this, {type, button, cx, cy, press});
         }
 
-        if (message->at(0) == 0xB0) {
+        if (data[0] == 0xB0) {
             // Top row buttons are shifted to 200 range
-            button = message->at(1) + 100 - 4;
+            button = data[1] + 100 - 4;
             type = BTN_TOP;
             cx = button - 200;
             cy = 0;
@@ -366,10 +404,17 @@ protected:
 
     }
 
-    std::mutex mtx;
-
+    // locks the callback
+    std::mutex cb_mtx;
     KeyCb callback;
-    RtMidiIn midi_in;
-    RtMidiOut midi_out;
+
+    jack::Client &client;
+
+    jack::Port input_port;
+    jack::Port output_port;
+
+    // queue for sent messages
+    jack::RingBuffer ringbuffer;
+
     bool cur_page;
 };
