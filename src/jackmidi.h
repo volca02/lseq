@@ -10,7 +10,6 @@
 #include "common.h"
 #include "error.h"
 
-
 namespace jack {
 
 class Port;
@@ -19,6 +18,18 @@ class Client;
 class JackException : public Exception {
 public:
     JackException(const char *msg) : Exception(msg) {}
+};
+
+// error/info function binders - we want the jack log suppressed unless specified
+class LogHandler {
+public:
+    LogHandler() {
+        jack_set_info_function(&info_handler);
+        jack_set_error_function(&err_handler);
+    }
+
+    static void info_handler(const char *msg) {}
+    static void err_handler(const char *msg) {}
 };
 
 class Client {
@@ -48,6 +59,7 @@ public:
         if (this == &o) return *this;
         client = o.client;
         o.client = nullptr;
+        return *this;
     }
 
     operator jack_client_t*() { return client; }
@@ -164,6 +176,7 @@ public:
         if (this == &o) return *this;
         buffer = o.buffer;
         o.buffer = nullptr;
+        return *this;
     }
 
 protected:
@@ -209,6 +222,7 @@ public:
         if (this == &o) return *this;
         port = o.port;
         o.port = nullptr;
+        return *this;
     }
 
     operator jack_port_t *() { return port; }
@@ -221,19 +235,31 @@ public:
     // establishes a connection of this registered port with a different one
     // allowing for data to go through
     void connect_from(const char *target) {
-        jack_connect(client, target, name());
+        auto ec = jack_connect(client, target, name());
+        if (ec)
+            throw Exception(format(
+                    "Cannot bind port ", name(), " from ", target, ": ", ec));
     }
 
     void disconnect_from(const char *target) {
-        jack_disconnect(client, target, name());
+        auto ec = jack_disconnect(client, target, name());
+        if (ec)
+            throw Exception(format(
+                    "Cannot unbind port ", name(), " from ", target, ": ", ec));
     }
 
     void connect_to(const char *target) {
-        jack_connect(client, name(), target);
+        auto ec = jack_connect(client, name(), target);
+        if (ec)
+            throw Exception(format(
+                    "Cannot bind port ", name(), " to ", target, ": ", ec));
     }
 
     void disconnect_to(const char *target) {
-        jack_disconnect(client, name(), target);
+        auto ec = jack_disconnect(client, name(), target);
+        if (ec)
+            throw Exception(format(
+                    "Cannot unbind port ", name(), " to ", target, ": ", ec));
     }
 
     const char *name() {
@@ -264,8 +290,10 @@ struct MidiMessage {
     uchar data[3] = {0x0,0x0,0x0};
 };
 
-// event queue for midi events. Used to schedule events to be output in
-// process call
+/** event queue for midi events. Used to schedule events to be output in
+ * process call.
+ * @note Should be used by two threads - one read thread and one write thread.
+ */
 class RingBuffer {
 public:
     RingBuffer(size_t size)

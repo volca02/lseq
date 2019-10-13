@@ -72,6 +72,18 @@ public:
         return linked->get_ticks() - get_ticks();
     }
 
+    // will move the note-off event's tick time
+    // this will most probably invalidate sequence in which this event resides
+    void set_length(ticks len) {
+        if (!linked) return;
+        if (linked->get_ticks() < get_ticks()) {
+            // we're the note-off
+            tick = linked->get_ticks() + len;
+        } else {
+            linked->tick = get_ticks() + len;
+        }
+    }
+
     // event ranking for note ordering purposes
     int get_rank() const {
         // basically identical to stuff in seq24's event.cpp

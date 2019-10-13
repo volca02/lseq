@@ -1,14 +1,39 @@
 #pragma once
 
+#include <array>
+#include <string>
+#include <sstream>
+
 #include <jack/types.h>
 
 using uchar = unsigned char;
 using ticks = unsigned long;
 
+/// default note velocity...
 const uchar DEFAULT_VELOCITY = 100;
 const ticks PPQN = 192; // ticks per quarter note
 const uchar NOTE_C3 = 60; // note numbers are in semitones
-const uchar NOTE_MAX = 127;
+const uchar NOTE_MAX = 127; // this is the highest note MIDI can handle
+/// default BPM for new projects
+const double DEFAULT_BPM = 120;
+
+/// converts the tick bpm to microsecond tick length
+inline double pulse_length_us(double bpm, ticks ppqn) {
+    return 60000000.0 / ppqn / bpm;
+}
+
+/** Converts ticks (presumably tick delta) to microseconds.
+ *
+ * Ticks are time-independent - i.e. 4*PPQN give us whole note, regardless of
+ * the set tempo. To calculate the microsecond steps per one tick, we have to
+ * know the tempo (BPM). For output, as we use jacks jack_nframes_t (which
+ * depends on the sample rate), we first have to normalize it to microseconds,
+ * then we convert that to frames within the jack output code.
+ *
+ */
+inline double ticks_to_us(ticks t, double bpm) {
+    return double(t) * pulse_length_us(bpm, PPQN);
+}
 
 /*
 
@@ -29,6 +54,28 @@ PPQN*4/3
 /** quantizes ticks based on offset and slope */
 class TimeScaler {
 public:
+    using Scaling = std::pair<const char *, ticks>;
+
+    /// scaling table. even rows are normal, odd rows are triplets
+    /// the name references the time quantity of each step
+    static constexpr std::array<Scaling, 16> scales{{
+            {"1", PPQN * 4},
+            {"1", PPQN * 4},  // does not make sense to 1/3 this...
+            {"1/2", PPQN * 2},
+            {"1/3", PPQN * 4 / 3},
+            {"1/4", PPQN},
+            {"1/6", PPQN * 2 / 3},
+            {"1/8", PPQN / 2},
+            {"1/12", PPQN / 3},
+            {"1/16", PPQN / 4},
+            {"1/24", PPQN / 2 / 3},
+            {"1/32", PPQN / 8},
+            {"1/48", PPQN / 4 / 3},
+            {"1/64", PPQN / 16},
+            {"1/96", PPQN / 8 / 3},
+            {"1/128", PPQN / 32},
+            {"1/192", PPQN / 16 / 3}}};
+
     TimeScaler(ticks offset, ticks step) : offset(offset), step(step) {}
 
     long to_quantum(ticks t) {
@@ -66,31 +113,70 @@ public:
 
     ticks get_step() const { return step; }
 
+    /// move scaling out/in by specified number of steps (negative numbers zoom
+    /// out)
     void scale(int scale) {
         for (;scale < 0;++scale)
-            scale_down();
+            scale_out();
         for (;scale > 0;--scale)
-            scale_up();
+            scale_in();
     }
 
     void set_step(ticks s) {
         step = s;
     }
 
-    void scale_up() {
-        step *= 2;
+    /// each division will contain more ticks
+    void scale_out() {
+        if (scaling >= 2) {
+            scaling -= 2;
+            update_scaling();
+        }
     }
 
-    void scale_down() {
-        ticks sb = step;
-        step /= 2;
-        if (!step) step = sb;
+    /// each division will contain less ticks
+    void scale_in() {
+        if (scaling + 2 <= scales.size()) {
+            scaling += 2;
+            update_scaling();
+        }
     }
 
-    // TODO: triplet view
+    bool get_triplets() const { return triplet; }
+
+    void set_triplets(bool t) {
+        triplet = t;
+        update_scaling();
+    }
+
+    void switch_triplets() {
+        triplet = !triplet;
+        update_scaling();
+    }
+
+    const char *scale_name() const {
+        return scales[scale_index()].first;
+    }
+
 protected:
+    void update_scaling() {
+        // fixup in case we overflow
+        if (scaling + 1 >= scales.size()) {
+            scaling = scales.size() - 2;
+        }
+
+        step = scales[scale_index()].second;
+    }
+
+    unsigned scale_index() const {
+        return scaling + (triplet ? 1 : 0);
+    }
+
     bool triplet = false;
     long offset = 0;
+
+    unsigned scaling = 2; // default is 1/4
+
     ticks step = PPQN; // default to quarter notes
 };
 
@@ -194,4 +280,26 @@ inline uchar nearest_lower_bit(uchar c, uchar pos) {
     }
 
     return cand;
+}
+
+template <typename HeadT>
+void format_to(std::ostringstream &oss, const HeadT &head)
+{
+    oss << head;
+}
+
+template <typename HeadT, typename... ArgsT>
+void format_to(std::ostringstream &oss, const HeadT &head, ArgsT... rest)
+{
+    oss << head;
+    format_to(oss, rest...);
+}
+
+// string stream formatters with more comfortable signatures
+template <typename ...ArgsT> std::string format(ArgsT... args) {
+    std::ostringstream ss;
+
+    format_to(ss, args...);
+
+    return ss.str();
 }

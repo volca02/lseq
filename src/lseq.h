@@ -3,10 +3,9 @@
 #include <map>
 #include <condition_variable>
 
+#include "jackmidi.h"
 #include "launchpad.h"
 #include "ui.h"
-
-#include "jackmidi.h"
 
 /** Main class - holds stuff together
  */
@@ -81,6 +80,7 @@ private:
     };
 
 
+    jack::LogHandler lh;
     std::mutex m;
     std::atomic<bool> do_exit = false;
     std::map<int, LaunchpadUI> launchpads;

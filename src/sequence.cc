@@ -45,7 +45,7 @@ void Sequence::remove_marked() {
     _remove_marked();
 }
 
-void Sequence::set_length(ticks len) {
+void Sequence::set_note_lengths(ticks len) {
     lock l(mtx);
 
     // TODO: Replace note ends only!
@@ -53,7 +53,35 @@ void Sequence::set_length(ticks len) {
     for (auto &ev: events) {
         // construct a new event in place of the old one, with new length
         if (ev.is_marked() && ev.is_note_on()) {
+/*            ev.set_length(len);
+            ev.unmark();*/
             _add_note(ev.get_ticks(), len, ev.get_note(), ev.get_velocity());
+        }
+    }
+
+    _remove_marked();
+    _tidy();
+}
+
+void Sequence::set_length(ticks l) {
+    ticks old_len = length;
+    length = l;
+
+    // if the new sequence is longer, no fixup is necessary
+    if (old_len <= length) return;
+
+    // shorten all to be contained within l ticks
+    for (auto &ev: events) {
+        // construct a new event in place of the old one, with new length
+        ticks start = ev.get_ticks();
+        if (start >= length) {
+            ev.mark();
+        };
+
+        if (!ev.is_note_on()) continue;
+
+        if (start + ev.get_length() >= length) {
+            ev.set_length(length - start);
         }
     }
 

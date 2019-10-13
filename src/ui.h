@@ -132,6 +132,7 @@ private:
             time_shift = 0;
             time_scale = 0;
             note_shift = 0;
+            switch_triplets = false;
             grid_on.clear();
             grid_off.clear();
             dirty = false;
@@ -146,6 +147,7 @@ private:
             time_shift = o.time_shift;
             time_scale = o.time_scale;
             note_shift = o.note_shift;
+            switch_triplets = o.switch_triplets;
             grid_on = o.grid_on;
             grid_off = o.grid_off;
             return *this;
@@ -153,9 +155,10 @@ private:
 
         SequenceScreen *owner;
         std::atomic<bool> dirty;
-        int time_shift = 0;
-        int time_scale = 0;
-        int note_shift = 0;
+        int time_shift = 0; // counts requests to move left/right (in time view)
+        int time_scale = 0; // counts requests to scale the timing up/down
+        int note_shift = 0; // counts requests to move up/down (in note view)
+        bool switch_triplets = false; // indicates triplet switch was requested
         Launchpad::Bitmap grid_on;  // any pressed button is stored here
         Launchpad::Bitmap grid_off; // any pressed button is stored here
     };

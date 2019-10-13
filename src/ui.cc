@@ -109,20 +109,32 @@ void SequenceScreen::on_key(const Launchpad::KeyEvent &ev) {
             else
                 updates.grid_off.mark(ev.x, ev.y);
 
+            // TODO: also schedule a midi event in router so that we hear what we press
+
             updates.mark_dirty();
         }
     } else {
         if (!ev.press) return;
 
-        switch (ev.code) {
-        case Launchpad::BC_LEFT: // shorten the sequence step by 1/2
-            updates.time_scale++;
-            updates.mark_dirty();
-            break;
-        case Launchpad::BC_RIGHT:
-            updates.time_scale--;
-            updates.mark_dirty();
-            break;
+        // special mode buttons while shift is pressed
+        if (ev.type == Launchpad::BTN_SIDE) {
+            switch (ev.y) {
+            case 0:  // switch triplets on/off
+                updates.switch_triplets = true;
+                updates.mark_dirty();
+                break;
+            }
+        } /*else if (ev.type == Launchpad::BTN_TOP)*/ {
+            switch (ev.code) {
+            case Launchpad::BC_LEFT:  // zoom out
+                updates.time_scale--;
+                updates.mark_dirty();
+                break;
+            case Launchpad::BC_RIGHT: // zoom in
+                updates.time_scale++;
+                updates.mark_dirty();
+                break;
+            }
         }
     }
 }
@@ -151,6 +163,11 @@ void SequenceScreen::update() {
 
     if (b.time_scale) {
         time_scaler.scale(b.time_scale);
+        dirty = true;
+    }
+
+    if (b.switch_triplets) {
+        time_scaler.switch_triplets();
         dirty = true;
     }
 
@@ -374,7 +391,7 @@ void SequenceScreen::set_note_lengths(unsigned x, unsigned y, unsigned len, bool
     uchar n = note_scaler.to_note(y);
 
     sequence->mark_range(t, t+s, n, n+1);
-    sequence->set_length(s * len);
+    sequence->set_note_lengths(s * len);
 
     uchar last_x = x;
 

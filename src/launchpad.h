@@ -384,7 +384,7 @@ protected:
         if ((data[0] == 0x80) || (data[0] == 0x90)) {
             button = data[1];
             // classify - every button with lower nibble == 8 is side button
-            if (button & 0x0F == 0x08)
+            if ((button & 0x0F) == 0x08)
                 type = BTN_SIDE;
             cx = button & 0x0F;
             cy = button >> 4;
@@ -401,7 +401,6 @@ protected:
 
             cback(*this, {type, button, cx, cy, press});
         }
-
     }
 
     // locks the callback

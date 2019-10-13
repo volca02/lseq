@@ -28,6 +28,9 @@ public:
     void remove_marked();
 
     // sets note length for marked range
+    void set_note_lengths(ticks l);
+
+    // sets the overall length of the sequence
     void set_length(ticks l);
 
     struct handle {
@@ -60,6 +63,7 @@ protected:
     void _add_event(const Event &ev);
 
     Events events;
+    ticks length;
 
     // mutex for multithreaded access locking
     std::mutex mtx;
