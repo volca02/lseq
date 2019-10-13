@@ -35,22 +35,6 @@ inline double ticks_to_us(ticks t, double bpm) {
     return double(t) * pulse_length_us(bpm, PPQN);
 }
 
-/*
-
-4*PPQN = PPWN
-PPQN
-[]   []   []   []
-
-Triplet mode
-PPQN*4/3
-[]    []    []
-
-3*PPQN*4/3 = PPWN
-
-*/
-
-// TODO: Switch to table based scaler
-// TODO: Switch offset to step based offset?
 /** quantizes ticks based on offset and slope */
 class TimeScaler {
 public:
@@ -169,7 +153,10 @@ protected:
     }
 
     unsigned scale_index() const {
-        return scaling + (triplet ? 1 : 0);
+        if (scaling >= 2)
+            return scaling + (triplet ? -1 : 0);
+        else
+            return scaling;
     }
 
     bool triplet = false;

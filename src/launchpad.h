@@ -53,8 +53,10 @@ public:
         CL_GREEN_L  = 0x10,
         CL_RED_L    = 0x01,
         CL_AMBER    = 0x33,
+        CL_AMBER_M  = 0x22,
         CL_AMBER_L  = 0x11,
-        CL_YELLOW   = 0x32
+        CL_YELLOW   = 0x32,
+        CL_YELLOW_M = 0x21
     };
 
     // converted keypress -

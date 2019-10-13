@@ -124,7 +124,7 @@ void SequenceScreen::on_key(const Launchpad::KeyEvent &ev) {
                 updates.mark_dirty();
                 break;
             }
-        } /*else if (ev.type == Launchpad::BTN_TOP)*/ {
+        } else if (ev.type == Launchpad::BTN_TOP) {
             switch (ev.code) {
             case Launchpad::BC_LEFT:  // zoom out
                 updates.time_scale--;
@@ -292,6 +292,12 @@ void SequenceScreen::repaint() {
             view[xc][y] |= FS_CONT;
         }
     }
+
+    // render other indicators
+    // triplets (green means triplets are enabled)
+    launchpad.set_color(launchpad.coord_to_btn(8, 0),
+                        time_scaler.get_triplets() ? Launchpad::CL_GREEN
+                                                   : Launchpad::CL_BLACK);
 
     // render the UI part
     launchpad.fill_matrix(
