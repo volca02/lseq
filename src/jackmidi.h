@@ -285,6 +285,14 @@ struct MidiMessage {
         len = pos;
     }
 
+    static MidiMessage compose_note_on(uchar channel, uchar note, uchar velo) {
+        return {(uchar)EV_NOTE_ON | channel, note, velo};
+    }
+
+    static MidiMessage compose_note_off(uchar channel, uchar note) {
+        return {(uchar)EV_NOTE_OFF | channel, note, 0x0};
+    }
+
     jack_nframes_t time = 0;
     uint8_t len = 0;
     uchar data[3] = {0x0,0x0,0x0};

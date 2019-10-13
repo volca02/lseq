@@ -286,7 +286,6 @@ public:
         jack::MidiBuffer jbuf = output_port.get_midi_buffer(nframes);
         jbuf.clear();
 
-        // TODO: Could use jack ring buffer here!
         jack_nframes_t last_frame_time = client.last_frame_time();
 
         // iterate all available Midi messages in the ringbuffer

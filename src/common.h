@@ -13,11 +13,12 @@ using ticks = unsigned long;
 
 /// default note velocity...
 const uchar DEFAULT_VELOCITY = 100;
-const ticks PPQN = 192; // ticks per quarter note
-const uchar NOTE_C3 = 60; // note numbers are in semitones
-const uchar NOTE_MAX = 127; // this is the highest note MIDI can handle
-/// default BPM for new projects
-const double DEFAULT_BPM = 120;
+const ticks PPQN             = 192;  // ticks per quarter note
+const uchar NOTE_C3          = 48;   // note numbers are in semitones
+const uchar NOTE_MAX         = 127;  // this is the highest note MIDI can handle
+const double DEFAULT_BPM     = 120;  // default BPM for new projects
+// channel is here really for the easiness of fixing - number is hard to grep
+const uchar MIDI_CH_DEFAULT  = 9;    // default MIDI channel (ch 1. is 0 here, 9 means ch 10)
 
 /// converts the tick bpm to microsecond tick length
 inline double pulse_length_us(double bpm, ticks ppqn) {
@@ -36,6 +37,23 @@ inline double pulse_length_us(double bpm, ticks ppqn) {
 inline double ticks_to_us(ticks t, double bpm) {
     return double(t) * pulse_length_us(bpm, PPQN);
 }
+
+/// Types of midi status
+enum MidiStatus {
+    EV_STATUS_BIT       = 0x80,
+    EV_NOTE_OFF         = 0x80,
+    EV_NOTE_ON          = 0x90,
+    EV_AFTERTOUCH       = 0xA0,
+    EV_CONTROL_CHANGE   = 0xB0,
+    EV_PROGRAM_CHANGE   = 0xC0,
+    EV_CHANNEL_PRESSURE = 0xD0,
+    EV_PITCH_WHEEL      = 0xE0,
+    EV_CLEAR_CHAN_MASK  = 0xF0,
+    EV_MIDI_CLOCK       = 0xF8,
+    EV_SYSEX            = 0xF0,
+    EV_SYSEX_END        = 0xF7
+};
+
 
 /** quantizes ticks based on offset and slope */
 class TimeScaler {

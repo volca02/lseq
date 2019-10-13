@@ -174,6 +174,9 @@ private:
     void paint_status_sidebar();
     uchar get_average_held_velocity();
 
+    void queue_note_on(uchar n, uchar vel);
+    void queue_note_off(uchar n);
+
     UpdateBlock updates; // current updates
     Launchpad::Bitmap held_buttons;
     Launchpad::Bitmap modified_notes;
@@ -224,6 +227,9 @@ public:
 
     // causes the main loop to wake up from sleep
     void wake_up();
+
+    // returns owner of this ui - i.e. the center lseq object
+    LSeq &get_owner() { return owner; }
 
 private:
     friend class UIScreen;

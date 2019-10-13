@@ -5,6 +5,7 @@
 
 #include "jackmidi.h"
 #include "launchpad.h"
+#include "router.h"
 #include "ui.h"
 
 /** Main class - holds stuff together
@@ -12,7 +13,7 @@
 class LSeq : public jack::Client::Callback {
 public:
     // TODO: Find available output midi devices - or let user specify
-    LSeq() : client("lseq") {
+    LSeq() : client("lseq"), router(client) {
         client.set_callback(*this);
         client.activate();
         spawn();
@@ -45,9 +46,13 @@ public:
     }
 
     int process(jack_nframes_t nframes) override {
-        for (auto &u : launchpads) u.second.l.process(nframes);
+        // iterate all launchpad
+        for (auto &u : launchpads) u.second.process(nframes);
+        router.process(nframes);
         return 0;
     }
+
+    Router &get_router() { return router; }
 
 private:
     void spawn() {
@@ -75,6 +80,10 @@ private:
         LaunchpadUI(LaunchpadUI &o) = delete;
         LaunchpadUI &operator=(LaunchpadUI &o) = delete;
 
+        void process(jack_nframes_t nframes) {
+            l.process(nframes);
+        }
+
         Launchpad l;
         UI ui;
     };
@@ -85,5 +94,6 @@ private:
     std::atomic<bool> do_exit = false;
     std::map<int, LaunchpadUI> launchpads;
     jack::Client client;
+    Router router;
     std::condition_variable cv;
 };

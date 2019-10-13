@@ -214,12 +214,16 @@ void SequenceScreen::update() {
         }
 
         if ((view[x][y] & FS_HAS_NOTE) == 0) {
+            // TODO: Handle default velocity?
             add_note(x, y, !dirty);
+            queue_note_on(note_scaler.to_note(y), DEFAULT_VELOCITY);
             modified_notes.mark(x, y);
         }
     });
 
     b.grid_off.iterate([&](unsigned x, unsigned y) {
+        queue_note_off(note_scaler.to_note(y));
+
         if ((view[x][y] & FS_HAS_NOTE) && !modified_notes.get(x, y)) {
             remove_note(x, y, !dirty);
         }
@@ -357,7 +361,7 @@ uchar SequenceScreen::to_color(View &v, unsigned x, unsigned y) {
     uchar col = Launchpad::CL_BLACK;
 
     if (s & FS_SCALE_MARK)
-        col = Launchpad::CL_AMBER_L;
+        col = Launchpad::CL_YELLOW_M;
 
     if (s & FS_CONT)
         col = Launchpad::CL_RED_L;
@@ -525,6 +529,18 @@ uchar SequenceScreen::get_average_held_velocity() {
     });
 
     return sequence->get_average_velocity();
+}
+
+void SequenceScreen::queue_note_on(uchar n, uchar vel) {
+    // TODO: Propper midi channel - (as specified by the sequence's owner)
+    ui.get_owner().get_router().queue_immediate(
+            jack::MidiMessage::compose_note_on(MIDI_CH_DEFAULT, n, vel));
+}
+
+void SequenceScreen::queue_note_off(uchar n) {
+    // TODO: Propper midi channel
+    ui.get_owner().get_router().queue_immediate(
+            jack::MidiMessage::compose_note_off(MIDI_CH_DEFAULT, n));
 }
 
 /* -------------------------------------------------------------------------- */

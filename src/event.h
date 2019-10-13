@@ -17,21 +17,6 @@ public:
         data[1] = srcbuf[2];
     }
 
-    enum Status {
-        EV_STATUS_BIT       = 0x80,
-        EV_NOTE_OFF         = 0x80,
-        EV_NOTE_ON          = 0x90,
-        EV_AFTERTOUCH       = 0xA0,
-        EV_CONTROL_CHANGE   = 0xB0,
-        EV_PROGRAM_CHANGE   = 0xC0,
-        EV_CHANNEL_PRESSURE = 0xD0,
-        EV_PITCH_WHEEL      = 0xE0,
-        EV_CLEAR_CHAN_MASK  = 0xF0,
-        EV_MIDI_CLOCK       = 0xF8,
-        EV_SYSEX            = 0xF0,
-        EV_SYSEX_END        = 0xF7
-    };
-
     bool is_linked() const { return linked; }
     Event *get_link() const { return linked; }
     void clear_link() { link(nullptr); }

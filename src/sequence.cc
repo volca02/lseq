@@ -177,7 +177,7 @@ void Sequence::_add_note(ticks start, ticks length, uchar note,
 {
     Event ev;
 
-    ev.set_status(Event::EV_NOTE_ON)
+    ev.set_status(EV_NOTE_ON)
       .set_note(note)
       .set_velocity(velocity)
       .set_ticks(start);
@@ -185,7 +185,7 @@ void Sequence::_add_note(ticks start, ticks length, uchar note,
     _add_event(ev);
 
     // add corresponding note-off as well.
-    ev.set_status(Event::EV_NOTE_OFF)
+    ev.set_status(EV_NOTE_OFF)
       .set_note(note)
       .set_velocity(velocity)
       .set_ticks(start + length);
