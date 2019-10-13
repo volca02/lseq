@@ -3,6 +3,8 @@
 #include <array>
 #include <string>
 #include <sstream>
+#include <iostream>
+
 
 #include <jack/types.h>
 
@@ -60,7 +62,7 @@ public:
             {"1/128", PPQN / 32},
             {"1/192", PPQN / 16 / 3}}};
 
-    TimeScaler(ticks offset, ticks step) : offset(offset), step(step) {}
+    TimeScaler(ticks offset) : offset(offset), step(PPQN) { update_scaling(); }
 
     long to_quantum(ticks t) {
         // the cast is there to ensure we handle negative values too
@@ -162,7 +164,7 @@ protected:
     bool triplet = false;
     long offset = 0;
 
-    unsigned scaling = 2; // default is 1/4
+    unsigned scaling = 4; // default is 1/4
 
     ticks step = PPQN; // default to quarter notes
 };
@@ -249,10 +251,10 @@ inline int highest_bit_set(uchar c) {
     int nib[16] = {-1, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3};
 
     if (c >> 4)
-        return nib[c & 0xf];
+        return nib[c >> 4] + 4;
 
     if (c & 0xf)
-        return nib[c >> 4] + 4;
+        return nib[c & 0xf];
 
     return -1;
 }

@@ -21,8 +21,6 @@ void Sequence::mark_range(ticks start, ticks end, uchar note_low,
     // scope-lock the sequence
     lock l(mtx);
 
-    _unmark_all();
-
     // iterate the sequence and find note-ons in time-range
     for (auto &e : events) {
         if (e.is_note_on() &&
@@ -63,6 +61,18 @@ void Sequence::set_note_lengths(ticks len) {
     _tidy();
 }
 
+void Sequence::set_note_velocities(uchar velo) {
+    lock l(mtx);
+
+    for (auto &ev: events) {
+        // no need to juggle around with anything here
+        if (ev.is_marked() && ev.is_note_on()) {
+            ev.set_velocity(velo);
+            ev.unmark();
+        }
+    }
+}
+
 void Sequence::set_length(ticks l) {
     ticks old_len = length;
     length = l;
@@ -87,6 +97,26 @@ void Sequence::set_length(ticks l) {
 
     _remove_marked();
     _tidy();
+}
+
+uchar Sequence::get_average_velocity() {
+    lock l(mtx);
+
+    unsigned total = 0, count = 0;
+
+    for (auto &ev: events) {
+        // no need to juggle around with anything here
+        if (ev.is_marked() && ev.is_note_on()) {
+            total += ev.get_velocity();
+            count++;
+            ev.unmark();
+        }
+    }
+
+    if (count)
+        return total/count;
+
+    return 0;
 }
 
 // largerly inspired by seq24's verify_and_link

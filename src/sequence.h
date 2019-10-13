@@ -33,6 +33,12 @@ public:
     // sets the overall length of the sequence
     void set_length(ticks l);
 
+    // sets velocity for marked notes
+    void set_note_velocities(uchar velo);
+
+    // returns average velocity for marked range. unmarks all note_ons
+    uchar get_average_velocity();
+
     struct handle {
         using const_iterator = Events::const_iterator;
 

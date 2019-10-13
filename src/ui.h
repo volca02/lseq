@@ -89,7 +89,7 @@ public:
     SequenceScreen(UI &ui)
         : UIScreen(ui)
         , updates(this)
-        , time_scaler(0, PPQN) // we default to quarter note steps
+        , time_scaler(0)
         , note_scaler(NOTE_C3, Launchpad::MATRIX_H)
     {}
 
@@ -133,6 +133,7 @@ private:
             time_scale = 0;
             note_shift = 0;
             switch_triplets = false;
+            side_buttons = 0;
             grid_on.clear();
             grid_off.clear();
             dirty = false;
@@ -148,6 +149,7 @@ private:
             time_scale = o.time_scale;
             note_shift = o.note_shift;
             switch_triplets = o.switch_triplets;
+            side_buttons = o.side_buttons;
             grid_on = o.grid_on;
             grid_off = o.grid_off;
             return *this;
@@ -159,6 +161,7 @@ private:
         int time_scale = 0; // counts requests to scale the timing up/down
         int note_shift = 0; // counts requests to move up/down (in note view)
         bool switch_triplets = false; // indicates triplet switch was requested
+        unsigned side_buttons = 0; // bitmap of side buttons pressed
         Launchpad::Bitmap grid_on;  // any pressed button is stored here
         Launchpad::Bitmap grid_off; // any pressed button is stored here
     };
@@ -166,6 +169,10 @@ private:
     void add_note(unsigned x, unsigned y, bool repaint);
     void remove_note(unsigned x, unsigned y, bool repaint);
     void set_note_lengths(unsigned x, unsigned y, unsigned len, bool repaint);
+    void set_note_velocities(uchar velo);
+    void paint_sidebar_value(uchar val, uchar color);
+    void paint_status_sidebar();
+    uchar get_average_held_velocity();
 
     UpdateBlock updates; // current updates
     Launchpad::Bitmap held_buttons;

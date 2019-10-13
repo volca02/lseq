@@ -2,6 +2,9 @@
 #include "sequence.h"
 #include "lseq.h"
 
+#include <iostream>
+
+
 UIScreen::UIScreen(UI &ui) : ui(ui), launchpad(ui.launchpad) {}
 
 void UIScreen::set_active_mode_button(unsigned m) {
@@ -109,8 +112,10 @@ void SequenceScreen::on_key(const Launchpad::KeyEvent &ev) {
             else
                 updates.grid_off.mark(ev.x, ev.y);
 
-            // TODO: also schedule a midi event in router so that we hear what we press
-
+            updates.mark_dirty();
+        } else if (ev.type == Launchpad::BTN_SIDE) {
+            // side button pressed
+            updates.side_buttons |= 1 << ev.y;
             updates.mark_dirty();
         }
     } else {
@@ -178,6 +183,7 @@ void SequenceScreen::update() {
 
     bool flip = false;
 
+    // TODO: also schedule a midi event in router so that we hear what we press
     // update from note press bitmap
     b.grid_on.iterate([&](unsigned x, unsigned y) {
         flip = !dirty;
@@ -225,6 +231,39 @@ void SequenceScreen::update() {
     // update our held buttons with grid_on, grid_off bits
     held_buttons |= b.grid_on;
     held_buttons &= ~b.grid_off;
+
+    // any side buttons pressed?
+    if (held_buttons.has_value()) {
+        if (b.side_buttons) {
+            // highest bit set indicates velocity
+            int vel_bit = highest_bit_set(b.side_buttons);
+
+            if (vel_bit >= 0) {
+                static const uchar velo_table[8] = {127,
+                                                    7 * 16,
+                                                    6 * 16,
+                                                    5 * 16,
+                                                    4 * 16,
+                                                    3 * 16,
+                                                    2 * 16,
+                                                    1 * 16};
+
+                // if so, we're setting velocity for the held notes
+                set_note_velocities(velo_table[vel_bit]);
+
+                // mark all currently held buttons as modified, so we won't
+                // remove the notes
+                modified_notes |= held_buttons;
+                flip = !dirty;
+            }
+        } else {
+            uchar velo = get_average_held_velocity();
+            paint_sidebar_value(velo, Launchpad::CL_AMBER);
+        }
+    } else {
+        // no held buttons. repaint status bar
+        paint_status_sidebar();
+    }
 
     if (dirty) repaint();
 
@@ -293,11 +332,14 @@ void SequenceScreen::repaint() {
         }
     }
 
-    // render other indicators
-    // triplets (green means triplets are enabled)
-    launchpad.set_color(launchpad.coord_to_btn(8, 0),
-                        time_scaler.get_triplets() ? Launchpad::CL_GREEN
-                                                   : Launchpad::CL_BLACK);
+    // TODO: Decide if we display indicators or note velocity based on held buttons
+    // are we holding any notes? if so we display average velocity
+    if (held_buttons.has_value()) {
+        uchar velo = get_average_held_velocity();
+        paint_sidebar_value(velo, Launchpad::CL_AMBER);
+    } else {
+        paint_status_sidebar();
+    }
 
     // render the UI part
     launchpad.fill_matrix(
@@ -396,6 +438,7 @@ void SequenceScreen::set_note_lengths(unsigned x, unsigned y, unsigned len, bool
     ticks s = time_scaler.get_step();
     uchar n = note_scaler.to_note(y);
 
+    sequence->unmark_all();
     sequence->mark_range(t, t+s, n, n+1);
     sequence->set_note_lengths(s * len);
 
@@ -421,6 +464,67 @@ void SequenceScreen::set_note_lengths(unsigned x, unsigned y, unsigned len, bool
         unsigned btn = Launchpad::coord_to_btn(xc, y);
         launchpad.set_color(btn, to_color(view, xc, y));
     }
+}
+
+void SequenceScreen::set_note_velocities(uchar velo) {
+    sequence->unmark_all();
+
+    // iterate all held notes
+    held_buttons.iterate([&](unsigned x, unsigned y) {
+        ticks t = time_scaler.to_ticks(x);
+        ticks s = time_scaler.get_step();
+        uchar n = note_scaler.to_note(y);
+
+        sequence->mark_range(t, t + s, n, n + 1);
+    });
+
+    sequence->set_note_velocities(velo);
+
+    // no repaint needed aside from the velocity indicator
+    // which we do here locally
+    // TODO: Paint the given velocity
+    paint_sidebar_value(velo, Launchpad::CL_AMBER);
+}
+
+void SequenceScreen::paint_sidebar_value(uchar val, uchar color) {
+    if (val > 127) val = 127;
+
+    // convert velocity to 0-8 button lights
+    val = (val + 1) * 8 / 128;
+
+    // from the bottom up (inverted to be more readable)
+    for (uchar y = 0; y < Launchpad::MATRIX_H; ++y) {
+        launchpad.set_color(
+                launchpad.coord_to_btn(8, Launchpad::MATRIX_H - 1 - y),
+                (val > y) ? color : Launchpad::CL_BLACK);
+    }
+}
+
+void SequenceScreen::paint_status_sidebar() {
+    // render other indicators
+    // triplets (green means triplets are enabled)
+    launchpad.set_color(launchpad.coord_to_btn(8, 0),
+                        time_scaler.get_triplets() ? Launchpad::CL_GREEN
+                        : Launchpad::CL_BLACK);
+
+    // clear the rest of the BTN_SIDE buttons
+    for (uchar y = 1; y < Launchpad::MATRIX_H; ++y) {
+        launchpad.set_color(launchpad.coord_to_btn(8, y),
+                            Launchpad::CL_BLACK);
+    }
+}
+
+uchar SequenceScreen::get_average_held_velocity() {
+    sequence->unmark_all();
+
+    held_buttons.iterate([&](unsigned x, unsigned y) {
+        ticks t = time_scaler.to_ticks(x);
+        ticks s = time_scaler.get_step();
+        uchar n = note_scaler.to_note(y);
+        sequence->mark_range(t, t + s, n, n + 1);
+    });
+
+    return sequence->get_average_velocity();
 }
 
 /* -------------------------------------------------------------------------- */
