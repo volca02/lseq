@@ -286,11 +286,11 @@ struct MidiMessage {
     }
 
     static MidiMessage compose_note_on(uchar channel, uchar note, uchar velo) {
-        return {(uchar)EV_NOTE_ON | channel, note, velo};
+        return {static_cast<uchar>(EV_NOTE_ON | channel), note, velo};
     }
 
     static MidiMessage compose_note_off(uchar channel, uchar note) {
-        return {(uchar)EV_NOTE_OFF | channel, note, 0x0};
+        return {static_cast<uchar>(EV_NOTE_OFF | channel), note, 0x0};
     }
 
     jack_nframes_t time = 0;

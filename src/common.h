@@ -39,7 +39,7 @@ inline double ticks_to_us(ticks t, double bpm) {
 }
 
 /// Types of midi status
-enum MidiStatus {
+enum MidiStatus : uchar {
     EV_STATUS_BIT       = 0x80,
     EV_NOTE_OFF         = 0x80,
     EV_NOTE_ON          = 0x90,
@@ -53,7 +53,6 @@ enum MidiStatus {
     EV_SYSEX            = 0xF0,
     EV_SYSEX_END        = 0xF7
 };
-
 
 /** quantizes ticks based on offset and slope */
 class TimeScaler {

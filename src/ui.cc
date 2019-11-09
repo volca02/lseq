@@ -294,6 +294,12 @@ void SequenceScreen::repaint() {
 
     auto seq_handle = sequence->get_handle();
 
+    // these will light up the arrows if there are more events in that direction
+    bool x_pre    = false;
+    bool x_post   = false;
+    bool y_above  = false;
+    bool y_below  = false;
+
     // we DO have a sequence to work on
     // prepare the view beforehand
     for (const auto &ev : seq_handle) {
@@ -308,11 +314,26 @@ void SequenceScreen::repaint() {
         // also quantize the length
         long l = time_scaler.length_to_quantum(ev.get_length());
 
-        if (y < 0) continue;
-        if (y >= Launchpad::MATRIX_H) continue;
+        if (x + l <= 0) {
+            x_pre = true;
+            continue;
+        }
 
-        if (x + l < 0) continue;
-        if (x >= Launchpad::MATRIX_W) continue;
+        if (x >= Launchpad::MATRIX_W) {
+            x_post = true;
+            continue;
+        }
+
+        if (y < 0) {
+            y_below = true;
+            continue;
+        }
+
+        if (y >= Launchpad::MATRIX_H) {
+            y_above = true;
+            continue;
+        }
+
 
         if (x >= 0) {
             uchar c = view[x][y];
@@ -350,6 +371,13 @@ void SequenceScreen::repaint() {
             [this](unsigned x, unsigned y) {
                 return to_color(view, x, y);
             });
+
+    // colorize the arrows based on the out-of-sight flags
+    uchar out_col = Launchpad::CL_GREEN;
+    launchpad.set_color(Launchpad::BC_UP,  y_below  ? out_col : 0);
+    launchpad.set_color(Launchpad::BC_DOWN, y_above ? out_col : 0);
+    launchpad.set_color(Launchpad::BC_LEFT,  x_pre  ? out_col : 0);
+    launchpad.set_color(Launchpad::BC_RIGHT, x_post ? out_col : 0);
 
     launchpad.flip(true);
 }
