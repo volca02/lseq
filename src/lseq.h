@@ -7,6 +7,7 @@
 #include "launchpad.h"
 #include "router.h"
 #include "ui.h"
+#include "project.h"
 
 /** Main class - holds stuff together
  */
@@ -72,7 +73,7 @@ private:
                     LSeq &lseq,
                     const char *inport,
                     const char *outport)
-                : l(client, "launchpad " + std::to_string(order)), ui(lseq, l)
+                : l(client, "launchpad " + std::to_string(order)), ui(lseq, lseq.project, l)
         {
             l.connect(inport, outport);
         }
@@ -95,6 +96,7 @@ private:
     std::atomic<bool> do_exit = false;
     std::map<int, LaunchpadUI> launchpads;
     jack::Client client;
+    Project project; // we just use one singular project and replace contents
     Router router;
     std::condition_variable cv;
 };

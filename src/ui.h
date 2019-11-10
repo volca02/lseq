@@ -8,10 +8,11 @@
 
 class UI;
 class LSeq;
+class Project;
 
 enum ScreenType {
-    SCR_SESSION  = 1, // main project screen
-    SCR_TRACK    = 2, // track screen - flow of sequences
+    SCR_TRACK    = 1, // main project screen
+    SCR_SONG     = 2, // track screen - flow of sequences
     SCR_SEQUENCE = 3 // a single sequence view
 };
 
@@ -48,29 +49,76 @@ protected:
 
 };
 
-/** Project screen. Track mapping to midi channels
- * Upper 2 Rows is midi tracks
- * Bottom buttons are track type selectors: NONE, ...
+/** Project/Track screen. Track sequence contents, track mapping to midi channels...
  */
-class ProjectScreen : public UIScreen {
+class TrackScreen : public UIScreen {
 public:
-    ProjectScreen(UI &ui) : UIScreen(ui) {}
+    TrackScreen(UI &ui, Project &project)
+            : UIScreen(ui), project(project), updates(this)
+    {
+    }
 
-    virtual ScreenType get_type() const { return SCR_SESSION; };
+    virtual ScreenType get_type() const { return SCR_TRACK; };
 
     void on_key(const Launchpad::KeyEvent &ev) override;
     void on_enter() override;
     void on_exit() override;
 
+    void update() override;
+
 private:
+    // TODO: Could we base this on some baseclass perhaps?
+    struct UpdateBlock {
+        UpdateBlock(TrackScreen *s = nullptr) : owner(s) {}
+
+        void clear() {
+            up_down = 0;
+            left_right = 0;
+            grid_on.clear();
+            grid_off.clear();
+            dirty = false;
+        }
+
+        void mark_dirty() {
+            dirty = true;
+            if (owner) owner->wake_up();
+        }
+
+        UpdateBlock &operator=(UpdateBlock &o) {
+            left_right      = o.left_right;
+            up_down         = o.up_down;
+            grid_on         = o.grid_on;
+            grid_off        = o.grid_off;
+            return *this;
+        }
+
+        TrackScreen *owner;
+        std::atomic<bool> dirty;
+
+        int up_down    = 0; // counts requests to move up/down
+        int left_right = 0; // counts requests to move left/right
+        Launchpad::Bitmap grid_on;  // key-on events from the grid
+        Launchpad::Bitmap grid_off; // key-off envets from the grid
+    };
+
+    // total repaint of the view
     void repaint();
+
+    Sequence *get_seq_for_xy(uchar x, uchar y);
+
+    Project &project;
+
+    // View coords
+    int vx = 0, vy = 0;
+
+    UpdateBlock updates;
 };
 
 /** Track screen. Shows the flow of all the sequences in project
  */
-class TrackScreen : public UIScreen {
+class SongScreen : public UIScreen {
 public:
-    TrackScreen(UI &ui) : UIScreen(ui) {}
+    SongScreen(UI &ui) : UIScreen(ui) {}
 
     virtual ScreenType get_type() const { return SCR_TRACK; };
 
@@ -79,6 +127,7 @@ public:
     void on_exit() override;
 
 private:
+    // total repaint of the view
     void repaint();
 };
 
@@ -122,20 +171,21 @@ private:
 
     Sequence *sequence = nullptr;
 
-    bool shift = false; // mixer key status TODO: make it thread safe?
-
     // contains all events accumulated
     struct UpdateBlock {
         UpdateBlock(SequenceScreen *s = nullptr) : owner(s) {}
 
         void clear() {
-            time_shift = 0;
+            up_down = 0;
             time_scale = 0;
-            note_shift = 0;
+            left_right = 0;
             switch_triplets = false;
             side_buttons = 0;
+            shift_only = false;
+            shift_held = 0;
             grid_on.clear();
             grid_off.clear();
+            shift_grid_on.clear();
             dirty = false;
         }
 
@@ -145,31 +195,46 @@ private:
         }
 
         UpdateBlock &operator=(UpdateBlock &o) {
-            time_shift = o.time_shift;
-            time_scale = o.time_scale;
-            note_shift = o.note_shift;
+            left_right      = o.left_right;
+            time_scale      = o.time_scale;
+            up_down         = o.up_down;
             switch_triplets = o.switch_triplets;
-            side_buttons = o.side_buttons;
-            grid_on = o.grid_on;
-            grid_off = o.grid_off;
+            side_buttons    = o.side_buttons;
+            grid_on         = o.grid_on;
+            shift_grid_on   = o.shift_grid_on;
+            grid_off        = o.grid_off;
+            shift_only      = o.shift_only;
+            shift_held      = o.shift_held;
             return *this;
         }
 
         SequenceScreen *owner;
         std::atomic<bool> dirty;
-        int time_shift = 0; // counts requests to move left/right (in time view)
+
+        int left_right = 0; // counts requests to move left/right (in time view)
         int time_scale = 0; // counts requests to scale the timing up/down
-        int note_shift = 0; // counts requests to move up/down (in note view)
+        int up_down    = 0; // counts requests to move up/down (in note view)
         bool switch_triplets = false; // indicates triplet switch was requested
         unsigned side_buttons = 0; // bitmap of side buttons pressed
+        bool shift_only = false; // only shift was held, no button pressed
+        time_t shift_held = 0; // time in seconds the shift was held for
         Launchpad::Bitmap grid_on;  // any pressed button is stored here
+        Launchpad::Bitmap shift_grid_on;  // any shift pressed button is stored here
         Launchpad::Bitmap grid_off; // any pressed button is stored here
     };
+
+    /// Used in on_key, different thread than the rest!
+    bool shift = false; // mixer key status TODO: make it thread safe?
+    bool shift_only = false;
+    time_t shift_start = 0; // when the shift was pressed. used on release
+    UpdateBlock updates; // current updates - accessed in both threads
+    /// end of on_key variable block
 
     void add_note(unsigned x, unsigned y, bool repaint);
     void remove_note(unsigned x, unsigned y, bool repaint);
     void set_note_lengths(unsigned x, unsigned y, unsigned len, bool repaint);
     void set_note_velocities(uchar velo);
+    void move_selected_notes(int mx, int my);
     void paint_sidebar_value(uchar val, uchar color);
     void paint_status_sidebar();
     uchar get_average_held_velocity();
@@ -177,9 +242,11 @@ private:
     void queue_note_on(uchar n, uchar vel);
     void queue_note_off(uchar n);
 
-    UpdateBlock updates; // current updates
     Launchpad::Bitmap held_buttons;
     Launchpad::Bitmap modified_notes;
+
+    // counter of visible marked notes
+    unsigned marked_notes;
 
     TimeScaler time_scaler;
     NoteScaler note_scaler;
@@ -192,6 +259,7 @@ private:
         FS_CONT       = 8, // continuation from previous field for longer notes
         FS_IN_SCALE   = 16, // the note presented is in set scale
         FS_SCALE_MARK = 32, // scale indicates mark for this position
+        FS_IS_SELECTED  = 64, // note is selected for editing
     };
 
     // this encodes the current view. each field is a bitmap (see FieldStatus)
@@ -200,19 +268,16 @@ private:
 
 class UI {
 public:
-    UI(LSeq &owner, Launchpad &l)
+    UI(LSeq &owner, Project &project, Launchpad &l)
         : owner(owner)
         , launchpad(l)
-        , project_screen(*this)
-        , track_screen(*this)
+        , track_screen(*this, project)
+        , song_screen(*this)
         , sequence_screen(*this)
         , current_screen(nullptr)
     {
         // set current screen to project screen
-        set_screen(SCR_SESSION);
-
-        sequence_screen.set_active_sequence(&sdef);
-
+        set_screen(SCR_TRACK);
         launchpad.set_callback(
                 [this](Launchpad &l, const Launchpad::KeyEvent &ev) { cb(l, ev); });
     }
@@ -238,10 +303,11 @@ private:
     UI &operator=(UI &o) = delete;
 
     void cb(Launchpad &l, const Launchpad::KeyEvent &ev) {
-        // we have top 4 buttons on the right reserved to screen change
+        // we have top 3 buttons on the right reserved to screen change
+        // NOTE: could use a 2 screen mode (red/green) on any of these (press again to swap screens)
         switch (ev.code) {
-        case Launchpad::BC_SESSION: if (ev.press) set_screen(SCR_SESSION); return;
-        case Launchpad::BC_USER1: if (ev.press) set_screen(SCR_TRACK); return;
+        case Launchpad::BC_SESSION: if (ev.press) set_screen(SCR_TRACK); return;
+        case Launchpad::BC_USER1: if (ev.press) set_screen(SCR_SONG); return;
         case Launchpad::BC_USER2: if (ev.press) set_screen(SCR_SEQUENCE); return;
         default:
             // event dispatcher. The events get distributed to currently selected UI
@@ -251,15 +317,16 @@ private:
         }
     }
 
+public:
     LSeq &owner;
     Launchpad &launchpad;
 
     // various screens
-    ProjectScreen project_screen;
     TrackScreen track_screen;
-    Sequence sdef; // TODO: Remove, just temporary sequence
+    SongScreen song_screen;
     SequenceScreen sequence_screen;
 
+protected:
     // current screen has to be locked via mutex while accesing
     mutable std::mutex mut;
     UIScreen *current_screen;

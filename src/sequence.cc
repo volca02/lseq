@@ -6,6 +6,11 @@ void Sequence::unmark_all() {
     _unmark_all();
 }
 
+void Sequence::unselect_all() {
+    lock l(mutex);
+    for (auto &ev : events) ev.unselect();
+}
+
 void Sequence::add_note(ticks start, ticks length, uchar note, uchar velocity) {
     // scope-lock the sequence
     lock l(mtx);
@@ -38,6 +43,29 @@ void Sequence::mark_range(ticks start, ticks end, uchar note_low,
     }
 }
 
+void Sequence::select_range(ticks start, ticks end, uchar note_low,
+                            uchar note_hi, bool toggle)
+{
+    // scope-lock the sequence
+    lock l(mtx);
+
+    // iterate the sequence and find note-ons in time-range
+    for (auto &e : events) {
+        if (e.is_note_on() &&
+            e.get_ticks() >= start &&
+            e.get_ticks() < end &&
+            e.get_note() >= note_low &&
+            e.get_note() < note_hi)
+        {
+            e.select_or_toggle(toggle);
+
+            // also mark linked to remove note-off
+            if (e.is_linked())
+                e.get_link()->select_or_toggle(toggle);
+        }
+    }
+}
+
 void Sequence::remove_marked() {
     lock l(mtx);
     _remove_marked();
@@ -51,8 +79,6 @@ void Sequence::set_note_lengths(ticks len) {
     for (auto &ev: events) {
         // construct a new event in place of the old one, with new length
         if (ev.is_marked() && ev.is_note_on()) {
-/*            ev.set_length(len);
-            ev.unmark();*/
             _add_note(ev.get_ticks(), len, ev.get_note(), ev.get_velocity());
         }
     }
@@ -119,6 +145,36 @@ uchar Sequence::get_average_velocity() {
     return 0;
 }
 
+bool Sequence::is_empty() const {
+    lock l(mtx);
+    return events.begin() == events.end();
+}
+
+void Sequence::move_selected_notes(
+            std::function<std::pair<ticks, uchar>(ticks, uchar)> mover)
+{
+    lock l(mtx);
+
+    for (auto &ev: events) {
+        if (ev.is_selected()) {
+            ev.mark(); // mark for processing and removal...
+        }
+    }
+
+    // mark selected first
+    for (auto &ev: events) {
+        // construct a new event in place of the old one, with new length
+        if (ev.is_marked() && ev.is_note_on()) {
+            auto np = mover(ev.get_ticks(), ev.get_note());
+            _add_note(np.first, ev.get_length(), np.second, ev.get_velocity(), true);
+        }
+    }
+
+    _remove_marked();
+    _tidy();
+}
+
+
 // largerly inspired by seq24's verify_and_link
 void Sequence::_tidy() {
     events.sort();
@@ -173,14 +229,15 @@ void Sequence::_remove_marked() {
 }
 
 void Sequence::_add_note(ticks start, ticks length, uchar note,
-                         uchar velocity)
+                         uchar velocity, bool selected)
 {
     Event ev;
 
     ev.set_status(EV_NOTE_ON)
       .set_note(note)
       .set_velocity(velocity)
-      .set_ticks(start);
+      .set_ticks(start)
+      .set_selected(selected);
 
     _add_event(ev);
 

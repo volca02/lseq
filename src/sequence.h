@@ -2,6 +2,7 @@
 
 #include <mutex>
 #include <list>
+#include <functional>
 
 #include "event.h"
 
@@ -17,12 +18,18 @@ public:
     // unmarks all notes
     void unmark_all();
 
+    // unselects all notes
+    void unselect_all();
+
     // adds a note into the sequence
     void add_note(ticks start, ticks length, uchar note,
                   uchar velocity = DEFAULT_VELOCITY);
 
     // marks a specified note(s) from the sequence - by window (unmarks all first)
     void mark_range(ticks start, ticks end, uchar note_low, uchar note_hi);
+
+    // selectes a specified note(s) from the sequence - by window (unmarks all first)
+    void select_range(ticks start, ticks end, uchar note_low, uchar note_hi, bool toggle = true);
 
     // removes marked notes
     void remove_marked();
@@ -39,6 +46,11 @@ public:
     // returns average velocity for marked range. unmarks all note_ons
     uchar get_average_velocity();
 
+    // TODO: Make this accept 3 params and return 3 params (start, pitch, length) and allow user to change the lengths as well
+    // moves notes in time/pitch as specified by the callback
+    void move_selected_notes(
+            std::function<std::pair<ticks, uchar>(ticks, uchar)> mover);
+
     struct handle {
         using const_iterator = Events::const_iterator;
 
@@ -54,6 +66,8 @@ public:
 
     handle get_handle() { return {*this}; }
 
+    bool is_empty() const;
+
 protected:
     // re-links all note on/offs, purges singluar events (note ons without note
     // offs and vice versa)
@@ -63,7 +77,7 @@ protected:
     void _unmark_all();
     void _remove_marked();
     // adds note, does NOT sort. _tidy is mandatory call before unlocking the sequence
-    void _add_note(ticks start, ticks length, uchar note, uchar velocity);
+    void _add_note(ticks start, ticks length, uchar note, uchar velocity, bool selected = false);
 
     // adds an event into the right sorted place in sequence
     void _add_event(const Event &ev);
@@ -72,5 +86,5 @@ protected:
     ticks length;
 
     // mutex for multithreaded access locking
-    std::mutex mtx;
+    mutable std::mutex mtx;
 };

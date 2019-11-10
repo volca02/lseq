@@ -9,7 +9,8 @@
 #include <jack/types.h>
 
 using uchar = unsigned char;
-using ticks = unsigned long;
+// signed for easier math ops around this
+using ticks = long;
 
 /// default note velocity...
 const uchar DEFAULT_VELOCITY = 100;
@@ -86,12 +87,14 @@ public:
         return (static_cast<long>(t) - offset) / static_cast<long>(step);
     }
 
+    // convers relative positioning (number of steps on LP) to ticks
+    ticks quantum_to_ticks(long quantum) {
+        return quantum * step;
+    }
+
+    // converts the X position on LP to absolute ticks
     ticks to_ticks(long quantum) {
         long tck = quantum * step + offset;
-
-        if (tck < 0)
-            return 0;
-
         return (ticks)tck;
     }
 
@@ -222,6 +225,10 @@ public:
     bool is_in_scale(uchar note) {
         // TODO: implement after implementing different scales
         return true;
+    }
+
+    uchar move_steps(uchar note, int8_t steps) {
+        return std::min(127, std::max(0, note + steps));
     }
 
     bool is_scale_mark(int y) {

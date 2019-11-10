@@ -27,6 +27,14 @@ public:
     void mark() { marked = true; }
     void unmark() { marked = false; }
 
+    // selection - used when transposing etc
+    bool is_selected() const { return selected; }
+    void select() { selected = true; }
+    void unselect() { selected = false; }
+    // sets selected or if toggle is set, inverts the selection
+    void select_or_toggle(bool toggle) { selected = !(selected && toggle); };
+    Event &set_selected(bool sel) { selected = sel; return *this; }
+
     uchar get_note() const { return data[0]; }
     Event &set_note(uchar note) { data[0] = note & 0x7F; return *this; }
 
@@ -101,6 +109,7 @@ protected:
     ticks tick    = 0;
     uchar status  = 0;
     uchar data[2] = {0x0, 0x0};
-    bool  marked  = false;
-    Event *linked = nullptr;
+    bool  marked    = false;
+    bool  selected  = false;
+    Event *linked   = nullptr;
 };

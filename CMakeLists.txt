@@ -17,6 +17,7 @@ add_executable(launchpad
     src/event.h
     src/sequencer.h
     src/project.h
+    src/track.h
     src/router.h
 )
 

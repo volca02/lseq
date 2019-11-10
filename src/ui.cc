@@ -1,9 +1,11 @@
+#include <iostream>
+#include <ctime>
+
 #include "ui.h"
 #include "sequence.h"
 #include "lseq.h"
-
-#include <iostream>
-
+#include "project.h"
+#include "track.h"
 
 UIScreen::UIScreen(UI &ui) : ui(ui), launchpad(ui.launchpad) {}
 
@@ -19,47 +21,148 @@ void UIScreen::wake_up() {
 }
 
 /* -------------------------------------------------------------------------- */
-/* ---- Project View -------------------------------------------------------- */
+/* ---- Track/Project setup View -------------------------------------------- */
 /* -------------------------------------------------------------------------- */
-void ProjectScreen::on_key(const Launchpad::KeyEvent &ev) {
+void TrackScreen::on_key(const Launchpad::KeyEvent &ev) {
+    lock l(mtx);
+
+    if (ev.type == Launchpad::BTN_GRID) {
+        // on and off button presses are distinct to allow for long press and button combos
+        if (ev.press) {
+            updates.grid_on.mark(ev.x, ev.y);
+        } else {
+            updates.grid_off.mark(ev.x, ev.y);
+        }
+
+        updates.mark_dirty();
+        return;
+    }
+
+    if (ev.press) {
+        // only button press events here, no release events
+        switch (ev.code) {
+        case Launchpad::BC_LEFT : updates.left_right--; updates.mark_dirty(); return;
+        case Launchpad::BC_RIGHT: updates.left_right++; updates.mark_dirty(); return;
+            // TODO: Use note scaler here
+        case Launchpad::BC_DOWN : updates.up_down--; updates.mark_dirty(); return;
+        case Launchpad::BC_UP   : updates.up_down++; updates.mark_dirty(); return;
+        }
+    }
 
 }
 
-void ProjectScreen::on_enter() {
+void TrackScreen::on_enter() {
     // color up our mode button
     set_active_mode_button(0);
 
-    // render the UI part
-    launchpad.fill_matrix(
-            [this](unsigned x, unsigned y) {
-                if (y == 0)
-                    return Launchpad::color(3, 3);
-
-                if (y == 7)
-                    return Launchpad::color(0, 3);
-
-                return Launchpad::color(0, 0);
-            });
+    repaint();
 
     // present
     launchpad.flip();
 };
 
-void ProjectScreen::on_exit() {
-};
+void TrackScreen::update() {
+    if (!updates.dirty) return;
 
-/* -------------------------------------------------------------------------- */
-/* ---- Track View ---------------------------------------------------------- */
-/* -------------------------------------------------------------------------- */
-void TrackScreen::on_key(const Launchpad::KeyEvent &ev) {
+    UpdateBlock ub;
+    {
+        lock l(mtx);
+        ub = updates;
+        updates.clear();
+    }
 
-}
+    // From here forward, we only use "ub", not "updates"
+    bool dirty = false;
 
-void TrackScreen::on_enter() {
-    repaint();
+    // NOTE: Temporary! Will use a key combo to invoke sequence editing
+
+    // did we get a grid_off event here?
+    // we take the first one
+    unsigned gx = 0, gy = 0; bool found = false;
+    ub.grid_off.iterate([&](unsigned x, unsigned y) {
+        found = true;
+        gx    = x;
+        gy    = y;
+    });
+
+    // switch to this particular
+    if (found) {
+        // note: temporary
+        Sequence *seq = get_seq_for_xy(gx, gy);
+        if (seq) {
+            ui.sequence_screen.set_active_sequence(seq);
+            ui.set_screen(SCR_SEQUENCE);
+        }
+    }
+
+
+    // ...
+    if (dirty) repaint();
+
+
 };
 
 void TrackScreen::repaint() {
+    uchar view[Launchpad::MATRIX_W][Launchpad::MATRIX_H];
+
+    for (uchar x = 0; x < Launchpad::MATRIX_W; ++x) {
+        for (uchar y = 0; y < Launchpad::MATRIX_H; ++y) {
+
+            Sequence *s = get_seq_for_xy(x, y);
+
+            if (!s) {
+                view[x][y] = Launchpad::CL_BLACK;
+                continue;
+            }
+
+            // TODO: Customizable color per track...
+            uchar col = s->is_empty() ? Launchpad::CL_BLACK
+                        : Launchpad::CL_AMBER;
+
+            view[x][y] = col;
+        }
+    }
+
+    launchpad.fill_matrix(
+            [&view](unsigned x, unsigned y) {
+                return view[x][y];
+            });
+
+    // TODO: light up buttons based on positioning - can we go more to the sides?
+};
+
+
+Sequence *TrackScreen::get_seq_for_xy(uchar x, uchar y) {
+    unsigned tr = y + vy;
+    if (tr >= project.get_track_count()) return nullptr;
+
+    Track *track = project.get_track(tr);
+
+    if (!track) return nullptr;
+
+    unsigned sq = x + vx;
+    if (sq >= track->get_sequence_count()) return nullptr;
+
+    return track->get_sequence(sq);
+}
+
+void TrackScreen::on_exit() {
+};
+
+/* -------------------------------------------------------------------------- */
+/* ---- Song Arrangement View ----------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+void SongScreen::on_key(const Launchpad::KeyEvent &ev) {
+    lock l(mtx);
+
+    // arrow keys move the view if applicable
+}
+
+void SongScreen::on_enter() {
+    repaint();
+};
+
+void SongScreen::repaint() {
     // color up our mode button
     set_active_mode_button(1);
 
@@ -74,7 +177,7 @@ void TrackScreen::repaint() {
 }
 
 // Note - no need to flip here maybe.
-void TrackScreen::on_exit() {
+void SongScreen::on_exit() {
 };
 
 /* -------------------------------------------------------------------------- */
@@ -88,6 +191,36 @@ void SequenceScreen::on_key(const Launchpad::KeyEvent &ev) {
 
     if (ev.code == Launchpad::BC_MIXER) {
         shift = ev.press;
+        if (ev.press) {
+            shift_only = true;
+            shift_start = std::time(nullptr);
+        } else {
+            // TODO: do this so we get the effect before releasing (easier usage)
+            // just mark up the start of the shift event and decide in update code
+            // but that needs a timer to wake the ui screen up after the decided time
+            updates.shift_only = shift_only;
+            updates.shift_held = std::time(nullptr) - shift_start;
+            updates.mark_dirty();
+        }
+        return;
+    }
+
+    shift_only = false;
+
+    // handle grid ops
+    if (ev.type == Launchpad::BTN_GRID) {
+        // on and off button presses are distinct to allow for long press and button combos
+        if (ev.press) {
+            if (shift) {
+                updates.shift_grid_on.mark(ev.x, ev.y);
+            } else {
+                updates.grid_on.mark(ev.x, ev.y);
+            }
+        } else {
+            updates.grid_off.mark(ev.x, ev.y);
+        }
+
+        updates.mark_dirty();
         return;
     }
 
@@ -97,23 +230,15 @@ void SequenceScreen::on_key(const Launchpad::KeyEvent &ev) {
         if (ev.press) {
             // only button press events here, no release events
             switch (ev.code) {
-            case Launchpad::BC_LEFT : updates.time_shift--; updates.mark_dirty(); return;
-            case Launchpad::BC_RIGHT: updates.time_shift++; updates.mark_dirty(); return;
+            case Launchpad::BC_LEFT : updates.left_right--; updates.mark_dirty(); return;
+            case Launchpad::BC_RIGHT: updates.left_right++; updates.mark_dirty(); return;
                 // TODO: Use note scaler here
-            case Launchpad::BC_DOWN : updates.note_shift--; updates.mark_dirty(); return;
-            case Launchpad::BC_UP   : updates.note_shift++; updates.mark_dirty(); return;
+            case Launchpad::BC_DOWN : updates.up_down--; updates.mark_dirty(); return;
+            case Launchpad::BC_UP   : updates.up_down++; updates.mark_dirty(); return;
             }
         }
 
-        if (ev.type == Launchpad::BTN_GRID) {
-            // on and off button presses are distinct to allow for long press and button combos
-            if (ev.press)
-                updates.grid_on.mark(ev.x, ev.y);
-            else
-                updates.grid_off.mark(ev.x, ev.y);
-
-            updates.mark_dirty();
-        } else if (ev.type == Launchpad::BTN_SIDE) {
+        if (ev.type == Launchpad::BTN_SIDE) {
             // side button pressed
             updates.side_buttons |= 1 << ev.y;
             updates.mark_dirty();
@@ -145,6 +270,12 @@ void SequenceScreen::on_key(const Launchpad::KeyEvent &ev) {
 }
 
 void SequenceScreen::on_enter() {
+    // skip to track screen if we have no sequence set
+    if (!sequence) {
+        ui.set_screen(SCR_TRACK);
+        return;
+    }
+
     repaint();
 };
 
@@ -158,29 +289,10 @@ void SequenceScreen::update() {
         updates.clear();
     }
 
+    // From here forward, we only use "b", not "updates"
+
     // we now walk through all the update points and update our display model
     bool dirty = false; // this means we need a global repaint...
-
-    if (b.time_shift) {
-        time_scaler.scroll(b.time_shift);
-        dirty = true;
-    }
-
-    if (b.time_scale) {
-        time_scaler.scale(b.time_scale);
-        dirty = true;
-    }
-
-    if (b.switch_triplets) {
-        time_scaler.switch_triplets();
-        dirty = true;
-    }
-
-    if (b.note_shift) {
-        note_scaler.scroll(b.note_shift);
-        dirty = true;
-    }
-
     bool flip = false;
 
     // TODO: also schedule a midi event in router so that we hear what we press
@@ -221,10 +333,34 @@ void SequenceScreen::update() {
         }
     });
 
-    b.grid_off.iterate([&](unsigned x, unsigned y) {
-        queue_note_off(note_scaler.to_note(y));
+    // TODO: Rework this to be initiated by timing, not by button release
+    // if it's held for more than specified time, and released without pressing anything else
+    if ((b.shift_held > 1) && b.shift_only) {
+        sequence->unselect_all();
+        dirty = true;
+    }
 
-        if ((view[x][y] & FS_HAS_NOTE) && !modified_notes.get(x, y)) {
+    // selections to notes done are transfered to selections in sequence
+    b.shift_grid_on.iterate([&](unsigned x, unsigned y) {
+        // mark notes that are pressed with shift
+        marked_notes++;
+        ticks t = time_scaler.to_ticks(x);
+        ticks s = time_scaler.get_step();
+        uchar n = note_scaler.to_note(y);
+        sequence->select_range(t, t+s, n, n+1, /*toggle*/ true);
+        dirty = true;
+    });
+
+    b.grid_off.iterate([&](unsigned x, unsigned y) {
+        if (modified_notes.get(x,y))
+            queue_note_off(note_scaler.to_note(y));
+
+        // only remove the note if it was a held note (not shift-marked)
+        if ((view[x][y] & FS_HAS_NOTE) && held_buttons.get(x, y)
+            && !modified_notes.get(x, y))
+        {
+            if (view[x][y] & FS_IS_SELECTED)
+                --marked_notes;
             remove_note(x, y, !dirty);
         }
 
@@ -264,9 +400,47 @@ void SequenceScreen::update() {
             uchar velo = get_average_held_velocity();
             paint_sidebar_value(velo, Launchpad::CL_AMBER);
         }
+
     } else {
         // no held buttons. repaint status bar
         paint_status_sidebar();
+    }
+
+    if (marked_notes) {
+        // handle left_right/up_down and time_scale differently - modifying all held notes
+        if (b.left_right) {
+            move_selected_notes(b.left_right, 0);
+            dirty = true;
+        }
+
+        if (b.up_down) {
+            move_selected_notes(0, b.up_down);
+            dirty = true;
+        }
+    } else {
+        if (b.left_right) {
+            time_scaler.scroll(b.left_right);
+            sequence->unmark_all();
+            dirty = true;
+        }
+
+        if (b.time_scale) {
+            time_scaler.scale(b.time_scale);
+            sequence->unmark_all();
+            dirty = true;
+        }
+
+        if (b.switch_triplets) {
+            time_scaler.switch_triplets();
+            sequence->unmark_all();
+            dirty = true;
+        }
+
+        if (b.up_down) {
+            note_scaler.scroll(b.up_down);
+            sequence->unmark_all();
+            dirty = true;
+        }
     }
 
     if (dirty) repaint();
@@ -299,6 +473,7 @@ void SequenceScreen::repaint() {
     bool x_post   = false;
     bool y_above  = false;
     bool y_below  = false;
+    marked_notes  = 0;
 
     // we DO have a sequence to work on
     // prepare the view beforehand
@@ -334,6 +509,7 @@ void SequenceScreen::repaint() {
             continue;
         }
 
+        bool is_selected = false;
 
         if (x >= 0) {
             uchar c = view[x][y];
@@ -345,6 +521,12 @@ void SequenceScreen::repaint() {
             // if the note timing is not accurate, mark it down
             if (!accurate) c |= FS_INACCURATE;
 
+            if (ev.is_selected()) {
+                c |= FS_IS_SELECTED;
+                is_selected = true;
+                ++marked_notes;
+            }
+
             view[x][y] = c;
         }
 
@@ -354,6 +536,8 @@ void SequenceScreen::repaint() {
             if (xc < 0) continue;
             if (xc >= Launchpad::MATRIX_W) break;
             view[xc][y] |= FS_CONT;
+            if (is_selected)
+                view[xc][y] |= FS_IS_SELECTED;
         }
     }
 
@@ -379,6 +563,9 @@ void SequenceScreen::repaint() {
     launchpad.set_color(Launchpad::BC_LEFT,  x_pre  ? out_col : 0);
     launchpad.set_color(Launchpad::BC_RIGHT, x_post ? out_col : 0);
 
+    launchpad.set_color(Launchpad::BC_MIXER,
+                        (marked_notes > 0) ? Launchpad::CL_GREEN : 0);
+
     launchpad.flip(true);
 }
 
@@ -400,6 +587,12 @@ uchar SequenceScreen::to_color(View &v, unsigned x, unsigned y) {
     // both of these boil down to incomplete information kind of a deal
     if (s & FS_INACCURATE || s & FS_MULTIPLE)
         col = Launchpad::CL_AMBER;
+
+    // marked notes are highest priority there is
+    if (s & FS_IS_SELECTED) {
+        col = ((s & FS_CONT) && !(s & FS_HAS_NOTE)) ? Launchpad::CL_GREEN_L
+                                                    : Launchpad::CL_GREEN;
+    }
 
     return col;
 }
@@ -518,6 +711,17 @@ void SequenceScreen::set_note_velocities(uchar velo) {
     paint_sidebar_value(velo, Launchpad::CL_AMBER);
 }
 
+void SequenceScreen::move_selected_notes(int mx, int my) {
+    // TODO: Move notes based on KEY, not HALFTONES. Needs note_scaler cooperation
+    ticks mt = time_scaler.quantum_to_ticks(mx);
+    sequence->move_selected_notes([&](ticks t, uint8_t pitch) {
+        return std::pair<ticks, uchar>{(std::max(ticks(0), t + mt)),
+                                       note_scaler.move_steps(pitch, my)};
+    });
+}
+
+
+
 void SequenceScreen::paint_sidebar_value(uchar val, uchar color) {
     if (val > 127) val = 127;
 
@@ -584,8 +788,8 @@ void UI::set_screen(ScreenType t) {
     UIScreen *next = nullptr;
 
     switch (t) {
-    case SCR_SESSION: next = &project_screen; break;
-    case SCR_TRACK: next = &track_screen; break;
+    case SCR_TRACK:    next = &track_screen; break;
+    case SCR_SONG:     next = &song_screen; break;
     case SCR_SEQUENCE: next = &sequence_screen; break;
     }
 
