@@ -9,6 +9,7 @@
 class UI;
 class LSeq;
 class Project;
+class Track;
 
 enum ScreenType {
     SCR_TRACK    = 1, // main project screen
@@ -46,7 +47,6 @@ protected:
 
     // mutex for multithreaded access locking
     std::mutex mtx;
-
 };
 
 /** Project/Track screen. Track sequence contents, track mapping to midi channels...
@@ -74,6 +74,7 @@ private:
         void clear() {
             up_down = 0;
             left_right = 0;
+            side_buttons = 0;
             grid_on.clear();
             grid_off.clear();
             dirty = false;
@@ -87,6 +88,7 @@ private:
         UpdateBlock &operator=(UpdateBlock &o) {
             left_right      = o.left_right;
             up_down         = o.up_down;
+            side_buttons    = o.side_buttons;
             grid_on         = o.grid_on;
             grid_off        = o.grid_off;
             return *this;
@@ -97,6 +99,7 @@ private:
 
         int up_down    = 0; // counts requests to move up/down
         int left_right = 0; // counts requests to move left/right
+        unsigned side_buttons = 0; // bitmap of side buttons pressed
         Launchpad::Bitmap grid_on;  // key-on events from the grid
         Launchpad::Bitmap grid_off; // key-off envets from the grid
     };
@@ -104,6 +107,7 @@ private:
     // total repaint of the view
     void repaint();
 
+    Track    *get_track_for_y(uchar y);
     Sequence *get_seq_for_xy(uchar x, uchar y);
 
     Project &project;
@@ -111,6 +115,7 @@ private:
     // View coords
     int vx = 0, vy = 0;
 
+    Launchpad::Bitmap held_buttons;
     UpdateBlock updates;
 };
 

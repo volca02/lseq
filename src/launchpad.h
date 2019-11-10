@@ -158,6 +158,13 @@ public:
             return has_value();
         }
 
+        bool operator==(const Bitmap &o) const {
+            return (bits[0] == o.bits[0]) && (bits[1] == o.bits[1]);
+        }
+        bool operator!=(const Bitmap &o) const {
+            return !operator==(o);
+        }
+
     protected:
         Bitmap(uint32_t a, uint32_t b) : bits{a,b} {}
 

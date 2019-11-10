@@ -47,6 +47,12 @@ void TrackScreen::on_key(const Launchpad::KeyEvent &ev) {
         case Launchpad::BC_DOWN : updates.up_down--; updates.mark_dirty(); return;
         case Launchpad::BC_UP   : updates.up_down++; updates.mark_dirty(); return;
         }
+
+        if (ev.type == Launchpad::BTN_SIDE) {
+            // side button pressed
+            updates.side_buttons |= 1 << ev.y;
+            updates.mark_dirty();
+        }
     }
 
 }
@@ -85,29 +91,46 @@ void TrackScreen::update() {
         gy    = y;
     });
 
-    // switch to this particular
+    Launchpad::Bitmap prev = held_buttons;
+
+    held_buttons |= ub.grid_on;
+    held_buttons &= ~ub.grid_off;
+
+    // repaint whole screen if held buttons changed
+    if (held_buttons != prev) dirty = true;
+
+    if (ub.side_buttons) {
+        // mute tracks that were pressed
+        for (unsigned y = 0; y < Launchpad::MATRIX_H; ++y) {
+            Track *tr = get_track_for_y(y);
+            if (!tr) continue;
+            if ((ub.side_buttons >> y) & 1) {
+                tr->toggle_mute();
+                dirty = true;
+            }
+        }
+    }
+
+    // switch to this particular sequence we released first
     if (found) {
         // note: temporary
         Sequence *seq = get_seq_for_xy(gx, gy);
         if (seq) {
             ui.sequence_screen.set_active_sequence(seq);
             ui.set_screen(SCR_SEQUENCE);
+            return;
         }
     }
 
-
     // ...
     if (dirty) repaint();
-
-
 };
 
 void TrackScreen::repaint() {
     uchar view[Launchpad::MATRIX_W][Launchpad::MATRIX_H];
 
-    for (uchar x = 0; x < Launchpad::MATRIX_W; ++x) {
-        for (uchar y = 0; y < Launchpad::MATRIX_H; ++y) {
-
+    for (uchar y = 0; y < Launchpad::MATRIX_H; ++y) {
+        for (uchar x = 0; x < Launchpad::MATRIX_W; ++x) {
             Sequence *s = get_seq_for_xy(x, y);
 
             if (!s) {
@@ -119,8 +142,16 @@ void TrackScreen::repaint() {
             uchar col = s->is_empty() ? Launchpad::CL_BLACK
                         : Launchpad::CL_AMBER;
 
+            // all pressed keys will show up, but only first to be released
+            if (held_buttons.get(x, y)) col = Launchpad::CL_RED;
+
             view[x][y] = col;
         }
+
+        // mutes?
+        Track *t = get_track_for_y(y);
+        uchar col = t->is_muted() ? Launchpad::CL_BLACK : Launchpad::CL_GREEN;
+        launchpad.set_color(Launchpad::coord_to_btn(8, y), col);
     }
 
     launchpad.fill_matrix(
@@ -128,9 +159,17 @@ void TrackScreen::repaint() {
                 return view[x][y];
             });
 
-    // TODO: light up buttons based on positioning - can we go more to the sides?
+    // TODO: light up buttons based on positioning - can we go more to the
+    // sides, etc?
+    launchpad.flip(true);
 };
 
+
+Track *TrackScreen::get_track_for_y(uchar y) {
+    unsigned tr = y + vy;
+    if (tr >= project.get_track_count()) return nullptr;
+    return project.get_track(tr);
+}
 
 Sequence *TrackScreen::get_seq_for_xy(uchar x, uchar y) {
     unsigned tr = y + vy;
@@ -147,6 +186,7 @@ Sequence *TrackScreen::get_seq_for_xy(uchar x, uchar y) {
 }
 
 void TrackScreen::on_exit() {
+    held_buttons.clear();
 };
 
 /* -------------------------------------------------------------------------- */
@@ -184,6 +224,7 @@ void SongScreen::on_exit() {
 /* ---- Sequence View ------------------------------------------------------- */
 /* -------------------------------------------------------------------------- */
 void SequenceScreen::on_exit() {
+    held_buttons.clear();
 };
 
 void SequenceScreen::on_key(const Launchpad::KeyEvent &ev) {

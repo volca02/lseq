@@ -15,6 +15,9 @@ public:
         return &sequences[num];
     }
 
+    bool is_muted() const { return muted; }
+    void toggle_mute() { muted = !muted; }
 protected:
     Sequence sequences[MAX_SEQUENCE];
+    bool muted = false;
 };
