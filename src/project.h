@@ -11,7 +11,12 @@ class Project {
 public:
     static constexpr unsigned MAX_TRACK = 16; // 16 tracks maximum total.
 
-    Project() : bpm(DEFAULT_BPM) {}
+    Project() : bpm(DEFAULT_BPM) {
+        // default setup...
+        for (uchar c = 0; c < MAX_TRACK; ++c) {
+            tracks[c].set_midi_channel(c);
+        }
+    }
 
     // sets the projects BPM tempo.
     void set_bpm(double b) { bpm = b; }

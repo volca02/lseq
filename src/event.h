@@ -77,6 +77,9 @@ public:
         }
     }
 
+    // returns pointer to data (the second and third byte of the message triad)
+    const uchar *get_data() const { return data; }
+
     // event ranking for note ordering purposes
     int get_rank() const {
         // basically identical to stuff in seq24's event.cpp

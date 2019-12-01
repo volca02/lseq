@@ -17,7 +17,15 @@ public:
 
     bool is_muted() const { return muted; }
     void toggle_mute() { muted = !muted; }
+
+    /// 0-15
+    uchar get_midi_channel() const { return midi_chan; }
+
+    /// 0-15
+    void set_midi_channel(uchar chan) { midi_chan = chan & 0x0F; }
+
 protected:
+    uchar midi_chan = 0;
     Sequence sequences[MAX_SEQUENCE];
     bool muted = false;
 };

@@ -285,6 +285,10 @@ struct MidiMessage {
         len = pos;
     }
 
+    MidiMessage(uint8_t len, uchar d0, uchar d1, uchar d2)
+            : len(len), data{d0, d1, d2}
+    {}
+
     static MidiMessage compose_note_on(uchar channel, uchar note, uchar velo) {
         return {static_cast<uchar>(EV_NOTE_ON | channel), note, velo};
     }

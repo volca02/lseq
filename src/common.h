@@ -26,6 +26,11 @@ inline double pulse_length_us(double bpm, ticks ppqn) {
     return 60000000.0 / ppqn / bpm;
 }
 
+/// rounds up to the nearest multiple of interval i for ticks t
+inline ticks next_multiple(ticks t, ticks i) {
+    return ((t + i - 1) / i) * i;
+}
+
 /** Converts ticks (presumably tick delta) to microseconds.
  *
  * Ticks are time-independent - i.e. 4*PPQN give us whole note, regardless of

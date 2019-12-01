@@ -13,7 +13,7 @@ class Sequence {
 public:
     using Events = std::list<Event>;
     using mutex = std::mutex;
-    using lock  = std::scoped_lock<std::mutex>;
+    using lock  = std::unique_lock<std::mutex>;
 
     // unmarks all notes
     void unmark_all();
@@ -40,6 +40,9 @@ public:
     // sets the overall length of the sequence
     void set_length(ticks l);
 
+    // length in ticks of the sequence
+    ticks get_length() const { return length; }
+
     // sets velocity for marked notes
     void set_note_velocities(uchar velo);
 
@@ -55,6 +58,9 @@ public:
         using const_iterator = Events::const_iterator;
 
         handle(Sequence &s) : s(s), l(s.mtx) {
+        }
+
+        handle(handle &&h) : s(h.s), l(std::move(h.l)) {
         }
 
         const_iterator begin() const { return s.events.begin(); }

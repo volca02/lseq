@@ -8,6 +8,7 @@
 #include "router.h"
 #include "ui.h"
 #include "project.h"
+#include "sequencer.h"
 
 /** Main class - holds stuff together
  */
