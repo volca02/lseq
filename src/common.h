@@ -19,7 +19,7 @@ const uchar NOTE_C3          = 48;   // note numbers are in semitones
 const uchar NOTE_MAX         = 127;  // this is the highest note MIDI can handle
 const double DEFAULT_BPM     = 120;  // default BPM for new projects
 // channel is here really for the easiness of fixing - number is hard to grep
-const uchar MIDI_CH_DEFAULT  = 9;    // default MIDI channel (ch 1. is 0 here, 9 means ch 10)
+const uchar MIDI_CH_DEFAULT  = 2;    // default MIDI channel (ch 1. is 0 here, 9 means ch 10)
 
 /// converts the tick bpm to microsecond tick length
 inline double pulse_length_us(double bpm, ticks ppqn) {
@@ -42,6 +42,12 @@ inline ticks next_multiple(ticks t, ticks i) {
  */
 inline double ticks_to_us(ticks t, double bpm) {
     return double(t) * pulse_length_us(bpm, PPQN);
+}
+
+/** converts microseconds to ticks
+ */
+inline ticks us_to_ticks(double us, double bpm) {
+    return us / pulse_length_us(bpm, PPQN);
 }
 
 /// Types of midi status

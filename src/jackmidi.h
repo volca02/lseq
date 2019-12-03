@@ -96,12 +96,17 @@ public:
         jack_deactivate(client);
     }
 
-    jack_nframes_t last_frame_time() {
+    jack_nframes_t last_frame_time() const {
         return jack_last_frame_time(client);
     }
 
-    jack_nframes_t frame_time() {
+    jack_nframes_t frame_time() const {
         return jack_frame_time(client);
+    }
+
+    // converts given frame time to microseconds
+    jack_time_t frames_to_time(jack_nframes_t nframes) const {
+        return jack_frames_to_time(client, nframes);
     }
 
     /// sample rate per second. in combination with nframes of process call

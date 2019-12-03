@@ -15,7 +15,7 @@
 class LSeq : public jack::Client::Callback {
 public:
     // TODO: Find available output midi devices - or let user specify
-    LSeq() : client("lseq"), router(client) {
+    LSeq() : client("lseq"), router(client), sequencer(project, router, client) {
         client.set_callback(*this);
         client.activate();
         spawn();
@@ -50,11 +50,13 @@ public:
     int process(jack_nframes_t nframes) override {
         // iterate all launchpad
         for (auto &u : launchpads) u.second.process(nframes);
+        sequencer.process(nframes);
         router.process(nframes);
         return 0;
     }
 
     Router &get_router() { return router; }
+    Sequencer &get_sequencer() { return sequencer; }
 
 private:
     void spawn() {
@@ -99,5 +101,6 @@ private:
     jack::Client client;
     Project project; // we just use one singular project and replace contents
     Router router;
+    Sequencer sequencer;
     std::condition_variable cv;
 };

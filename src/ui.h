@@ -77,6 +77,7 @@ private:
             side_buttons = 0;
             grid_on.clear();
             grid_off.clear();
+            shift_grid_on.clear();
             dirty = false;
         }
 
@@ -91,6 +92,7 @@ private:
             side_buttons    = o.side_buttons;
             grid_on         = o.grid_on;
             grid_off        = o.grid_off;
+            shift_grid_on   = o.shift_grid_on;
             return *this;
         }
 
@@ -102,6 +104,7 @@ private:
         unsigned side_buttons = 0; // bitmap of side buttons pressed
         Launchpad::Bitmap grid_on;  // key-on events from the grid
         Launchpad::Bitmap grid_off; // key-off envets from the grid
+        Launchpad::Bitmap shift_grid_on;  // any shift pressed button is stored here
     };
 
     // total repaint of the view
@@ -109,6 +112,9 @@ private:
 
     Track    *get_track_for_y(uchar y);
     Sequence *get_seq_for_xy(uchar x, uchar y);
+    bool      schedule_sequence_for_xy(uchar x, uchar y);
+
+    std::atomic<bool> shift = false; // mixer key status TODO: make it thread safe?
 
     Project &project;
 
@@ -116,6 +122,7 @@ private:
     int vx = 0, vy = 0;
 
     Launchpad::Bitmap held_buttons;
+    Launchpad::Bitmap shift_held_buttons;
     UpdateBlock updates;
 };
 

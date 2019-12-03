@@ -30,6 +30,10 @@ struct SequenceWalker {
         }
     }
 
+    bool at_end() {
+        return iter == handle.end();
+    }
+
     unsigned track;
     ticks start; // offset to start of the sequence (timing)
     Sequence::handle handle;
@@ -41,8 +45,10 @@ struct SequenceWalker {
  */
 class Sequencer : public jack::Client::Callback {
 public:
-    Sequencer(Project *proj, Router *r) : project(proj), router(r) {}
-
+    Sequencer(Project &proj, Router &r, jack::Client &client)
+            : project(proj), router(r), client(client)
+    {
+    }
 
     bool schedule_sequence(unsigned track, unsigned sequence) {
         return schedule_sequence(track, sequence, get_follow_up_ticks(track));
@@ -50,7 +56,7 @@ public:
 
     bool schedule_sequence(unsigned track, unsigned sequence, ticks when) {
         // queue a track to change sequence on
-        Track *t = project->get_track(track);
+        Track *t = project.get_track(track);
 
         if (t) {
             Sequence *seq = t->get_sequence(sequence);
@@ -61,26 +67,41 @@ public:
                 return true;
             }
         }
+
+        return false;
     }
 
     int process(jack_nframes_t nframes) override {
-        if (!playing) return 0;
+        auto last_frames = client.last_frame_time();
+
+        auto strt_us = client.frames_to_time(last_frames);
+        auto end_us = client.frames_to_time(last_frames + nframes);
+
         // calculate current tick window
-        // TODO: Calculate these from nframes!
-        ticks w_start;
-        ticks w_stop;
+        ticks last_ticks = current_ticks;
+        ticks w_start = us_to_ticks(strt_us, project.get_bpm());
+        current_ticks = w_start;
+        ticks w_stop = us_to_ticks(end_us, project.get_bpm());
+
+        // TODO: Handle XRun
 
         // TODO: if the tick changes during the window, process track changes
-
         // TODO: then, if track changes, send note-off events to all played
         // notes
-        // TODO: May revise that and remember note-off time for all notes, and
-        // schedule those out of scope of the current track selection.
-        // This would enable us to have out-of sequence note ends that would be
-        // still valid and properly scheduled.
 
-        // last step - schedule notes on the current set of active track's sequences
-        schedule_notes(w_start, w_stop);
+        if (current_ticks != last_ticks) {
+            swap_sequences();
+
+            // TODO: May revise that and remember note-off time for all notes, and
+            // schedule those out of scope of the current track selection.
+            // This would enable us to have out-of sequence note ends that would be
+            // still valid and properly scheduled.
+
+            // last step - schedule notes on the current set of active track's sequences
+            schedule_notes(w_start, w_stop);
+        }
+
+        return 0;
     }
 
     // stops all playback immediately and unconditionally (well... it will be
@@ -93,8 +114,8 @@ public:
     }
 
     ticks now() {
-        // TODO: Fix this with propper timing code!
-        return 0;
+        // TODO: learn to offset this value by start time
+        return current_ticks;
     }
 
     /** returns a tick onto which to schedule a sequence
@@ -113,22 +134,45 @@ public:
 
 protected:
     ticks next_opportunity() {
-        return next_multiple(now(), PPQN);
+        return next_multiple(current_ticks, PPQN);
     }
 
-    void schedule_notes(ticks w_start, ticks w_stop) {
+    void swap_sequences() {
+        // TODO: Send note-offs
+        ticks current = current_ticks;
+        for (unsigned t = 0; t < Project::MAX_TRACK; ++t) {
+            ticks when = tracks[t].when_change;
+            if (when > 0 && when <= current)
+            {
+                tracks[t].current = tracks[t].next;
+                tracks[t].when_change = 0;
+                tracks[t].when_started = current;
+            }
+        }
+    }
+
+    /// returns true if there's any sequence playing right now
+    bool schedule_notes(ticks w_start, ticks w_stop) {
         // we lock all the track's sequences here and gain iterators
         auto walkers = lock_all_tracks();
+
+        if (walkers.size() == 0) return false;
 
         bool added = false;
 
         // move all the sequences to the start of the window
         for (auto &sw : walkers) {
             sw.advance_to(w_start);
+
+            // no more notes? the track is to be stopped
+            if (sw.at_end()) {
+                tracks[sw.track].current = nullptr;
+            }
         }
 
         do {
             // scan through all track handles to see who's next
+            added = false;
             ticks c_ticks = 0;
             int   c_index = -1;
 
@@ -138,9 +182,9 @@ protected:
                 if (w.iter != w.handle.end()) {
                     ticks t = w.get_ticks();
 
-                    if (t > w_stop) continue;
+                    if (t >= w_stop) continue;
 
-                    if (t < c_ticks) {
+                    if (t < c_ticks || c_index < 0) {
                         c_index = i;
                         c_ticks = t;
                     }
@@ -151,7 +195,7 @@ protected:
 
             if (c_index >= 0) {
                 unsigned track = walkers[c_index].track;
-                uchar channel = project->get_track(track)->get_midi_channel();
+                uchar channel = project.get_track(track)->get_midi_channel();
 
                 auto event = *walkers[c_index].iter;
 
@@ -166,12 +210,14 @@ protected:
                 jack::MidiMessage msg = midi_event_to_msg(
                         event, channel);
 
-                router->queue_event(msg);
+                router.queue_event(msg);
                 // move the iter
                 ++walkers[c_index].iter;
                 added = true;
             }
         } while (added);
+
+        return true;
     }
 
     std::vector<SequenceWalker> lock_all_tracks() {
@@ -198,8 +244,9 @@ protected:
         std::atomic<ticks> when_change  = 0; // when do we change to the next track?
     };
 
-    Project *project;
-    Router *router;
-    std::atomic<bool> playing;
+    Project &project;
+    Router  &router;
+    jack::Client &client;
+    std::atomic<ticks> current_ticks;
     TrackStatus tracks[Project::MAX_TRACK];
 };

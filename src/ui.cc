@@ -26,10 +26,19 @@ void UIScreen::wake_up() {
 void TrackScreen::on_key(const Launchpad::KeyEvent &ev) {
     lock l(mtx);
 
+    if (ev.code == Launchpad::BC_MIXER) {
+        shift = ev.press;
+        return;
+    }
+
     if (ev.type == Launchpad::BTN_GRID) {
         // on and off button presses are distinct to allow for long press and button combos
         if (ev.press) {
-            updates.grid_on.mark(ev.x, ev.y);
+            if (shift) {
+                updates.shift_grid_on.mark(ev.x, ev.y);
+            } else {
+                updates.grid_on.mark(ev.x, ev.y);
+            }
         } else {
             updates.grid_off.mark(ev.x, ev.y);
         }
@@ -80,21 +89,7 @@ void TrackScreen::update() {
     // From here forward, we only use "ub", not "updates"
     bool dirty = false;
 
-    // NOTE: Temporary! Will use a key combo to invoke sequence editing
-
-    // did we get a grid_off event here?
-    // we take the first one
-    unsigned gx = 0, gy = 0; bool found = false;
-    ub.grid_off.iterate([&](unsigned x, unsigned y) {
-        found = true;
-        gx    = x;
-        gy    = y;
-    });
-
     Launchpad::Bitmap prev = held_buttons;
-
-    held_buttons |= ub.grid_on;
-    held_buttons &= ~ub.grid_off;
 
     // repaint whole screen if held buttons changed
     if (held_buttons != prev) dirty = true;
@@ -111,16 +106,37 @@ void TrackScreen::update() {
         }
     }
 
-    // switch to this particular sequence we released first
-    if (found) {
-        // note: temporary
-        Sequence *seq = get_seq_for_xy(gx, gy);
-        if (seq) {
-            ui.sequence_screen.set_active_sequence(seq);
-            ui.set_screen(SCR_SEQUENCE);
-            return;
-        }
+    bool edit_press = false; uchar gx = 0, gy = 0;
+    ub.grid_off.iterate([&](unsigned x, unsigned y) {
+                            edit_press = shift_held_buttons.get(x, y);
+                            gx = x;
+                            gy = y;
+                        });
+
+    if (edit_press) {
+            Sequence *seq = get_seq_for_xy(gx, gy);
+            if (seq) {
+                ui.sequence_screen.set_active_sequence(seq);
+                ui.set_screen(SCR_SEQUENCE);
+                return;
+            }
     }
+
+    // any presses to play the sequence?
+    bool play = false;
+    ub.grid_on.iterate([&](unsigned x, unsigned y) {
+                           play = true;
+                           gx = x;
+                           gy = y;
+                       });
+    if (play) {
+        schedule_sequence_for_xy(gx, gy);
+    }
+
+    held_buttons |= ub.grid_on;
+    held_buttons &= ~ub.grid_off;
+    shift_held_buttons |= ub.shift_grid_on;
+    shift_held_buttons &= ~ub.grid_off;
 
     // ...
     if (dirty) repaint();
@@ -185,8 +201,26 @@ Sequence *TrackScreen::get_seq_for_xy(uchar x, uchar y) {
     return track->get_sequence(sq);
 }
 
+bool TrackScreen::schedule_sequence_for_xy(uchar x, uchar y) {
+    unsigned tr = y + vy;
+    if (tr >= project.get_track_count()) return false;
+
+    Track *track = project.get_track(tr);
+
+    if (!track) return false;
+
+    unsigned sq = x + vx;
+    if (sq >= track->get_sequence_count()) return false;
+
+    ui.owner.get_sequencer().schedule_sequence(tr, sq);
+
+    return true;
+}
+
 void TrackScreen::on_exit() {
     held_buttons.clear();
+    shift_held_buttons.clear();
+    shift = false;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -806,6 +840,7 @@ uchar SequenceScreen::get_average_held_velocity() {
 
 void SequenceScreen::queue_note_on(uchar n, uchar vel) {
     // TODO: Propper midi channel - (as specified by the sequence's owner)
+    #warning todo: use the project/track to get midi chan
     ui.get_owner().get_router().queue_immediate(
             jack::MidiMessage::compose_note_on(MIDI_CH_DEFAULT, n, vel));
 }
