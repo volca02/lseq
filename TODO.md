@@ -1,6 +1,13 @@
 
 ### Sequence editing features ###
 
+* TODO: Timing based events - schedule time events every Nth of a second to allow:
+   - time based key presses to work
+   - button blinking (this could be done with page swapping on launchpad)
+   - also distribute sequence relative playback time across the code
+     (or better yet - let the sequence know it is being played since ticks X)
+* TODO: Distribute playback events through the code
+   - sequence played note, etc. Could render those notes with different color
 * TODO: Pressing shift after holding note should skip erase operation on that note after grid release
 * TODO: Scroll immediately when selection goes off-screen
 * TODO: Mark the boundaries of the sequence red on the arrows (can't scroll left, past sequence end, note 0/127)
