@@ -74,7 +74,13 @@ public:
             rb.read_advance(read);
 
             jack_midi_data_t *evbuf = jbuf.event_reserve(t, 3);
-            std::copy(std::begin(msg.data), std::end(msg.data), evbuf);
+
+            if (evbuf) {
+                // TODO: add debug event logging here
+                std::copy(std::begin(msg.data), std::end(msg.data), evbuf);
+            } else {
+                // TODO: report underrun/not enough space
+            }
         }
     }
 

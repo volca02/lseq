@@ -47,16 +47,17 @@ public:
     enum Colors {
         CL_BLACK    = 0x00,
         CL_GREEN    = 0x30,
-        CL_RED      = 0x03,
         CL_GREEN_M  = 0x20,
-        CL_RED_M    = 0x02,
         CL_GREEN_L  = 0x10,
+        CL_RED      = 0x03,
+        CL_RED_M    = 0x02,
         CL_RED_L    = 0x01,
         CL_AMBER    = 0x33,
         CL_AMBER_M  = 0x22,
         CL_AMBER_L  = 0x11,
         CL_YELLOW   = 0x32,
-        CL_YELLOW_M = 0x21
+        CL_YELLOW_M = 0x21,
+        CL_ORANGE   = 0x13
     };
 
     // converted keypress -

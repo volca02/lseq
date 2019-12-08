@@ -18,8 +18,12 @@ const ticks PPQN             = 192;  // ticks per quarter note
 const uchar NOTE_C3          = 48;   // note numbers are in semitones
 const uchar NOTE_MAX         = 127;  // this is the highest note MIDI can handle
 const double DEFAULT_BPM     = 120;  // default BPM for new projects
+
 // channel is here really for the easiness of fixing - number is hard to grep
 const uchar MIDI_CH_DEFAULT  = 2;    // default MIDI channel (ch 1. is 0 here, 9 means ch 10)
+
+const ticks SEQUENCE_DEFAULT_LENGTH = 8*PPQN; // default length of the sequence - 8 quarter notes
+
 
 /// converts the tick bpm to microsecond tick length
 inline double pulse_length_us(double bpm, ticks ppqn) {
@@ -64,6 +68,11 @@ enum MidiStatus : uchar {
     EV_MIDI_CLOCK       = 0xF8,
     EV_SYSEX            = 0xF0,
     EV_SYSEX_END        = 0xF7
+};
+
+/// bitmap of flags applicable to sequences
+enum SequenceFlags : unsigned {
+    SEQF_REPEATED       = 1
 };
 
 /** quantizes ticks based on offset and slope */

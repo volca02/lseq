@@ -85,10 +85,6 @@ public:
 
         // TODO: Handle XRun
 
-        // TODO: if the tick changes during the window, process track changes
-        // TODO: then, if track changes, send note-off events to all played
-        // notes
-
         if (current_ticks != last_ticks) {
             swap_sequences();
 
@@ -113,11 +109,6 @@ public:
         }
     }
 
-    ticks now() {
-        // TODO: learn to offset this value by start time
-        return current_ticks;
-    }
-
     /** returns a tick onto which to schedule a sequence
      * to follow up on the last one, or start at the next bar
      * if none is playing right now
@@ -128,7 +119,7 @@ public:
             return next_opportunity();
         } else {
             // get the time till end
-            return cur->get_length() - tracks[track].when_started;
+            return cur->get_length() + tracks[track].when_started;
         }
     }
 
@@ -138,15 +129,30 @@ protected:
     }
 
     void swap_sequences() {
-        // TODO: Send note-offs
         ticks current = current_ticks;
         for (unsigned t = 0; t < Project::MAX_TRACK; ++t) {
             ticks when = tracks[t].when_change;
-            if (when > 0 && when <= current)
-            {
+            if (when > 0 && when <= current) {
                 tracks[t].current = tracks[t].next;
-                tracks[t].when_change = 0;
+
+                if (tracks[t].current->get_flags() & SEQF_REPEATED) {
+                    tracks[t].when_change = current + tracks[t].current->get_length();
+                } else {
+                    tracks[t].when_change = 0;
+                    tracks[t].next        = nullptr;
+                }
+
                 tracks[t].when_started = current;
+
+                uchar channel = project.get_track(t)->get_midi_channel();
+
+                // queue immediate note-offs
+                for (uchar i = 0; i < NOTE_MAX; ++i) {
+                    if (tracks[t].playing_notes[i]) {
+                        tracks[t].playing_notes[i] = false;
+                        router.queue_immediate(jack::MidiMessage::compose_note_off(channel, i));
+                    }
+                }
             }
         }
     }
@@ -166,6 +172,7 @@ protected:
 
             // no more notes? the track is to be stopped
             if (sw.at_end()) {
+                auto current = tracks[sw.track].current;
                 tracks[sw.track].current = nullptr;
             }
         }
@@ -175,10 +182,11 @@ protected:
             added = false;
             ticks c_ticks = 0;
             int   c_index = -1;
-
-            int i = 0;
+            int   i = -1;
 
             for (auto &w : walkers) {
+                ++i;
+
                 if (w.iter != w.handle.end()) {
                     ticks t = w.get_ticks();
 
@@ -189,10 +197,9 @@ protected:
                         c_ticks = t;
                     }
                 }
-
-                ++i;
             }
 
+            // there's something to be queued
             if (c_index >= 0) {
                 unsigned track = walkers[c_index].track;
                 uchar channel = project.get_track(track)->get_midi_channel();

@@ -74,6 +74,10 @@ public:
 
     bool is_empty() const;
 
+    // user-defined flags
+    unsigned get_flags() const { return flags; }
+    void set_flags(unsigned f) { flags = f; }
+
 protected:
     // re-links all note on/offs, purges singluar events (note ons without note
     // offs and vice versa)
@@ -90,6 +94,8 @@ protected:
 
     Events events;
     ticks length;
+
+    unsigned flags = 0;
 
     // mutex for multithreaded access locking
     mutable std::mutex mtx;

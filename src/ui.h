@@ -26,7 +26,7 @@ public:
 
     virtual void on_key(const Launchpad::KeyEvent &ev) = 0;
 
-    virtual void on_enter() {};
+    virtual ScreenType on_enter() = 0;
 
     virtual void on_exit() {};
 
@@ -61,7 +61,7 @@ public:
     virtual ScreenType get_type() const { return SCR_TRACK; };
 
     void on_key(const Launchpad::KeyEvent &ev) override;
-    void on_enter() override;
+    ScreenType on_enter() override;
     void on_exit() override;
 
     void update() override;
@@ -111,7 +111,7 @@ private:
     void repaint();
 
     Track    *get_track_for_y(uchar y);
-    Sequence *get_seq_for_xy(uchar x, uchar y);
+    std::pair<Track *, Sequence *> get_seq_for_xy(uchar x, uchar y);
     bool      schedule_sequence_for_xy(uchar x, uchar y);
 
     std::atomic<bool> shift = false; // mixer key status TODO: make it thread safe?
@@ -135,7 +135,7 @@ public:
     virtual ScreenType get_type() const { return SCR_TRACK; };
 
     void on_key(const Launchpad::KeyEvent &ev) override;
-    void on_enter() override;
+    ScreenType on_enter() override;
     void on_exit() override;
 
 private:
@@ -156,10 +156,10 @@ public:
 
     virtual ScreenType get_type() const { return SCR_SEQUENCE; };
 
-    void set_active_sequence(Sequence *seq);
+    void set_active_sequence(Track *track, Sequence *seq);
 
     void on_key(const Launchpad::KeyEvent &ev) override;
-    void on_enter() override;
+    ScreenType on_enter() override;
     void on_exit() override;
 
     virtual void update() override;
@@ -181,6 +181,7 @@ private:
 
     uchar bg_flags(unsigned x, unsigned y);
 
+    Track    *track    = nullptr;
     Sequence *sequence = nullptr;
 
     // contains all events accumulated
@@ -272,6 +273,7 @@ private:
         FS_IN_SCALE   = 16, // the note presented is in set scale
         FS_SCALE_MARK = 32, // scale indicates mark for this position
         FS_IS_SELECTED  = 64, // note is selected for editing
+        FS_SEQ_END    = 128 // sequence ends here
     };
 
     // this encodes the current view. each field is a bitmap (see FieldStatus)
@@ -307,6 +309,8 @@ public:
 
     // returns owner of this ui - i.e. the center lseq object
     LSeq &get_owner() { return owner; }
+
+    UIScreen *get_screen(ScreenType st);
 
 private:
     friend class UIScreen;

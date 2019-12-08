@@ -7,7 +7,12 @@ class Track {
 public:
     static constexpr unsigned MAX_SEQUENCE = 64; // 64 tracks maximum total per track.
 
-    Track() {};
+    Track() {
+        for (unsigned i = 0; i < MAX_SEQUENCE; ++i) {
+            sequences[i].set_length(SEQUENCE_DEFAULT_LENGTH);
+            sequences[i].set_flags(SEQF_REPEATED);
+        }
+    };
 
     unsigned get_sequence_count() { return MAX_SEQUENCE; }
     Sequence *get_sequence(unsigned num) {

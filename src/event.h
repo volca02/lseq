@@ -84,8 +84,8 @@ public:
     int get_rank() const {
         // basically identical to stuff in seq24's event.cpp
         switch (status) {
-        case EV_NOTE_OFF: return 10;
-        case EV_NOTE_ON: return 9;
+        case EV_NOTE_OFF: return 9;
+        case EV_NOTE_ON: return 10;
         case EV_AFTERTOUCH:
         case EV_CHANNEL_PRESSURE:
         case EV_PITCH_WHEEL: return 5;

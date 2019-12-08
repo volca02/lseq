@@ -1,7 +1,6 @@
 
 ### Sequence editing features ###
 
-* TODO: Use track number to play the pressed notes, not the hardcoded value
 * TODO: Pressing shift after holding note should skip erase operation on that note after grid release
 * TODO: Scroll immediately when selection goes off-screen
 * TODO: Mark the boundaries of the sequence red on the arrows (can't scroll left, past sequence end, note 0/127)
@@ -10,15 +9,13 @@
 * TODO: allow scrolling when selection is visible - rework the key combinations
 * TODO: shift should light up when selections are visible
 * TODO: When selection is visible allow viewing/modifying the velocity values
-* TODO: Allow displaying and moving the endpoint marker of the sequence - sequence length
+* TODO: Allow moving the endpoint marker of the sequence - sequence length
 * TODO: Copy/paste of selection with pasted notes being selected (original unselected),
   relative to view position
 * TODO: Whole sequence selection? For transposition etc.
 * TODO: Display playback line when playback passes over the current view - and global even propagation in general
 * TODO: Alternative display/edit mode - display non-note events (modwheel, pitchbend, midi CCs)
 * Triplet view could leave every fourth column empty, easing orientation in timing.
-* TODO: Allow manipulation with sequence end (can just be multiple of 8 first, and display it)
-* TODO: Use sequence length to determine when next sequence is to be scheduled, instead of multiples of PPQN
 
 ### Track screen ###
 

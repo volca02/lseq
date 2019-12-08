@@ -66,7 +66,7 @@ void TrackScreen::on_key(const Launchpad::KeyEvent &ev) {
 
 }
 
-void TrackScreen::on_enter() {
+ScreenType TrackScreen::on_enter() {
     // color up our mode button
     set_active_mode_button(0);
 
@@ -74,6 +74,8 @@ void TrackScreen::on_enter() {
 
     // present
     launchpad.flip();
+
+    return get_type();
 };
 
 void TrackScreen::update() {
@@ -114,24 +116,19 @@ void TrackScreen::update() {
                         });
 
     if (edit_press) {
-            Sequence *seq = get_seq_for_xy(gx, gy);
-            if (seq) {
-                ui.sequence_screen.set_active_sequence(seq);
+            auto sq = get_seq_for_xy(gx, gy);
+            if (sq.second) {
+                ui.sequence_screen.set_active_sequence(
+                        sq.first, sq.second);
                 ui.set_screen(SCR_SEQUENCE);
                 return;
             }
     }
 
     // any presses to play the sequence?
-    bool play = false;
     ub.grid_on.iterate([&](unsigned x, unsigned y) {
-                           play = true;
-                           gx = x;
-                           gy = y;
+                           schedule_sequence_for_xy(x, y);
                        });
-    if (play) {
-        schedule_sequence_for_xy(gx, gy);
-    }
 
     held_buttons |= ub.grid_on;
     held_buttons &= ~ub.grid_off;
@@ -147,7 +144,7 @@ void TrackScreen::repaint() {
 
     for (uchar y = 0; y < Launchpad::MATRIX_H; ++y) {
         for (uchar x = 0; x < Launchpad::MATRIX_W; ++x) {
-            Sequence *s = get_seq_for_xy(x, y);
+            Sequence *s = get_seq_for_xy(x, y).second;
 
             if (!s) {
                 view[x][y] = Launchpad::CL_BLACK;
@@ -187,18 +184,18 @@ Track *TrackScreen::get_track_for_y(uchar y) {
     return project.get_track(tr);
 }
 
-Sequence *TrackScreen::get_seq_for_xy(uchar x, uchar y) {
+std::pair<Track *, Sequence *> TrackScreen::get_seq_for_xy(uchar x, uchar y) {
     unsigned tr = y + vy;
-    if (tr >= project.get_track_count()) return nullptr;
+    if (tr >= project.get_track_count()) return {nullptr, nullptr};
 
     Track *track = project.get_track(tr);
 
-    if (!track) return nullptr;
+    if (!track) return {nullptr, nullptr};
 
     unsigned sq = x + vx;
-    if (sq >= track->get_sequence_count()) return nullptr;
+    if (sq >= track->get_sequence_count()) return {nullptr, nullptr};
 
-    return track->get_sequence(sq);
+    return {track, track->get_sequence(sq)};
 }
 
 bool TrackScreen::schedule_sequence_for_xy(uchar x, uchar y) {
@@ -232,8 +229,9 @@ void SongScreen::on_key(const Launchpad::KeyEvent &ev) {
     // arrow keys move the view if applicable
 }
 
-void SongScreen::on_enter() {
+ScreenType SongScreen::on_enter() {
     repaint();
+    return get_type();
 };
 
 void SongScreen::repaint() {
@@ -344,14 +342,14 @@ void SequenceScreen::on_key(const Launchpad::KeyEvent &ev) {
     }
 }
 
-void SequenceScreen::on_enter() {
+ScreenType SequenceScreen::on_enter() {
     // skip to track screen if we have no sequence set
     if (!sequence) {
-        ui.set_screen(SCR_TRACK);
-        return;
+        return SCR_TRACK;
     }
 
     repaint();
+    return get_type();
 };
 
 void SequenceScreen::update() {
@@ -616,6 +614,16 @@ void SequenceScreen::repaint() {
         }
     }
 
+    for (uchar x = 0; x < Launchpad::MATRIX_W; ++x) {
+        ticks ticks = time_scaler.to_ticks(x);
+        if (ticks >= sequence->get_length()) {
+            for (uchar y = 0; y < Launchpad::MATRIX_H; ++y) {
+                view[x][y] |= FS_SEQ_END;
+            }
+            break;
+        }
+    }
+
     // TODO: Decide if we display indicators or note velocity based on held buttons
     // are we holding any notes? if so we display average velocity
     if (held_buttons.has_value()) {
@@ -669,6 +677,11 @@ uchar SequenceScreen::to_color(View &v, unsigned x, unsigned y) {
                                                     : Launchpad::CL_GREEN;
     }
 
+    // medium green marks sequence end
+    if (s & FS_SEQ_END) {
+        col = Launchpad::CL_ORANGE;
+    }
+
     return col;
 }
 
@@ -683,7 +696,9 @@ uchar SequenceScreen::bg_flags(unsigned x, unsigned y) {
     return note_scaler.is_scale_mark(y) ? FS_SCALE_MARK : 0;
 }
 
-void SequenceScreen::set_active_sequence(Sequence *seq) {
+void SequenceScreen::set_active_sequence(Track *tr, Sequence *seq)
+{
+    track    = tr;
     sequence = seq;
 }
 
@@ -839,16 +854,13 @@ uchar SequenceScreen::get_average_held_velocity() {
 }
 
 void SequenceScreen::queue_note_on(uchar n, uchar vel) {
-    // TODO: Propper midi channel - (as specified by the sequence's owner)
-    #warning todo: use the project/track to get midi chan
     ui.get_owner().get_router().queue_immediate(
-            jack::MidiMessage::compose_note_on(MIDI_CH_DEFAULT, n, vel));
+            jack::MidiMessage::compose_note_on(track->get_midi_channel(), n, vel));
 }
 
 void SequenceScreen::queue_note_off(uchar n) {
-    // TODO: Propper midi channel
     ui.get_owner().get_router().queue_immediate(
-            jack::MidiMessage::compose_note_off(MIDI_CH_DEFAULT, n));
+            jack::MidiMessage::compose_note_off(track->get_midi_channel(), n));
 }
 
 /* -------------------------------------------------------------------------- */
@@ -858,21 +870,25 @@ void UI::wake_up() {
     owner.wake_up();
 }
 
+UIScreen *UI::get_screen(ScreenType st) {
+    switch (st) {
+    case SCR_TRACK:    return &track_screen; break;
+    case SCR_SONG:     return &song_screen; break;
+    case SCR_SEQUENCE: return &sequence_screen; break;
+    }
+
+    return nullptr;
+}
+
 
 void UI::set_screen(ScreenType t) {
     std::scoped_lock<std::mutex> l(mut);
-    UIScreen *next = nullptr;
+    UIScreen *next = get_screen(t);
 
-    switch (t) {
-    case SCR_TRACK:    next = &track_screen; break;
-    case SCR_SONG:     next = &song_screen; break;
-    case SCR_SEQUENCE: next = &sequence_screen; break;
-    }
-
-    if (next != current_screen) {
+    while (next && (next != current_screen)) {
         if (current_screen) current_screen->on_exit();
-        if (next) next->on_enter();
         current_screen = next;
+        if (next) next = get_screen(next->on_enter());
     }
 }
 
