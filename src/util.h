@@ -1,5 +1,6 @@
 // Utilities with thicker include dependencies
 
+#include "common.h"
 #include "event.h"
 #include "jackmidi.h"
 

@@ -58,7 +58,7 @@ public:
     {
     }
 
-    virtual ScreenType get_type() const { return SCR_TRACK; };
+    virtual ScreenType get_type() const override { return SCR_TRACK; };
 
     void on_key(const Launchpad::KeyEvent &ev) override;
     ScreenType on_enter() override;
@@ -132,7 +132,7 @@ class SongScreen : public UIScreen {
 public:
     SongScreen(UI &ui) : UIScreen(ui) {}
 
-    virtual ScreenType get_type() const { return SCR_TRACK; };
+    virtual ScreenType get_type() const override { return SCR_TRACK; };
 
     void on_key(const Launchpad::KeyEvent &ev) override;
     ScreenType on_enter() override;
@@ -154,7 +154,7 @@ public:
         , note_scaler(NOTE_C3, Launchpad::MATRIX_H)
     {}
 
-    virtual ScreenType get_type() const { return SCR_SEQUENCE; };
+    virtual ScreenType get_type() const override { return SCR_SEQUENCE; };
 
     void set_active_sequence(Track *track, Sequence *seq);
 
@@ -193,6 +193,7 @@ private:
             time_scale = 0;
             left_right = 0;
             switch_triplets = false;
+            switch_scale    = false;
             side_buttons = 0;
             shift_only = false;
             shift_held = 0;
@@ -212,6 +213,7 @@ private:
             time_scale      = o.time_scale;
             up_down         = o.up_down;
             switch_triplets = o.switch_triplets;
+            switch_scale    = o.switch_scale;
             side_buttons    = o.side_buttons;
             grid_on         = o.grid_on;
             shift_grid_on   = o.shift_grid_on;
@@ -228,6 +230,7 @@ private:
         int time_scale = 0; // counts requests to scale the timing up/down
         int up_down    = 0; // counts requests to move up/down (in note view)
         bool switch_triplets = false; // indicates triplet switch was requested
+        bool switch_scale    = false; // indicates scale switch was requested
         unsigned side_buttons = 0; // bitmap of side buttons pressed
         bool shift_only = false; // only shift was held, no button pressed
         time_t shift_held = 0; // time in seconds the shift was held for

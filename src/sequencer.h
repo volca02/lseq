@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+
 #include "common.h"
 #include "util.h"
 #include "jackmidi.h"

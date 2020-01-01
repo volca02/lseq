@@ -82,8 +82,8 @@ private:
         }
 
         // not copyable. just to be sure here
-        LaunchpadUI(LaunchpadUI &o) = delete;
-        LaunchpadUI &operator=(LaunchpadUI &o) = delete;
+        LaunchpadUI(const LaunchpadUI &) = delete;
+        LaunchpadUI &operator=(const LaunchpadUI &) = delete;
 
         void process(jack_nframes_t nframes) {
             l.process(nframes);

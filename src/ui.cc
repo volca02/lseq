@@ -326,6 +326,10 @@ void SequenceScreen::on_key(const Launchpad::KeyEvent &ev) {
                 updates.switch_triplets = true;
                 updates.mark_dirty();
                 break;
+            case 1:  // switch the current scale
+                updates.switch_scale = true;
+                updates.mark_dirty();
+                break;
             }
         } else if (ev.type == Launchpad::BTN_TOP) {
             switch (ev.code) {
@@ -505,6 +509,12 @@ void SequenceScreen::update() {
 
         if (b.switch_triplets) {
             time_scaler.switch_triplets();
+            sequence->unmark_all();
+            dirty = true;
+        }
+
+        if (b.switch_scale) {
+            note_scaler.switch_scale();
             sequence->unmark_all();
             dirty = true;
         }
@@ -735,7 +745,7 @@ void SequenceScreen::remove_note(unsigned x, unsigned y, bool repaint) {
         for (uchar xc = x + 1; xc < Launchpad::MATRIX_W; ++xc)
         {
             // stop on no continuations or on a new note
-            if (view[xc][y] & FS_CONT == 0) break;
+            if ((view[xc][y] & FS_CONT) == 0) break;
             if (view[xc][y] & FS_HAS_NOTE) break;
             view[xc][y] = bg_flags(x, y);
             last_x = xc;
@@ -763,8 +773,8 @@ void SequenceScreen::set_note_lengths(unsigned x, unsigned y, unsigned len, bool
     {
         int cl = xc - x;
         // stop on no continuations or on a new note
-        if ((view[xc][y] & FS_CONT == 0) && (cl >= len)) break;
-        if (view[xc][y] & FS_HAS_NOTE && xc != x) break; // next note already, break it up
+        if (((view[xc][y] & FS_CONT) == 0) && (cl >= len)) break;
+        if ((view[xc][y] & FS_HAS_NOTE) && xc != x) break; // next note already, break it up
         // not over new length?
         if (cl < len) {
             if (len > 1)

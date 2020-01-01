@@ -83,8 +83,8 @@ public:
     /// scaling table. even rows are normal, odd rows are triplets
     /// the name references the time quantity of each step
     static constexpr std::array<Scaling, 16> scales{{
-            {"1", PPQN * 4},
-            {"1", PPQN * 4},  // does not make sense to 1/3 this...
+            {"1",   PPQN * 4},
+            {"1",   PPQN * 4},  // does not make sense to 1/3 this...
             {"1/2", PPQN * 2},
             {"1/3", PPQN * 4 / 3},
             {"1/4", PPQN},
@@ -209,16 +209,96 @@ protected:
     ticks step = PPQN; // default to quarter notes
 };
 
+
+/// implements a semitone list based scale/position bidirectional conversion
+class Scale {
+public:
+    constexpr static const uchar INVALID = 0xFF;
+
+    constexpr Scale(const char *name,
+                    std::initializer_list<uchar> lst)
+        : count(lst.size())
+    {
+        uint8_t pos = 0;
+        uchar idx   = 0;
+
+        for (uchar i = 0; i < 12; ++i) {
+            scale[i] = 0;
+            inverse[i] = INVALID;
+        }
+
+        for (uchar c : lst) {
+            scale[idx] = c;
+            inverse[c] = idx;
+            mask |= 1 << c;
+            ++idx;
+        }
+    }
+
+    /** Converts positional coordinate (in scale steps) to note value, based on
+     * our scale and base note of the scale.
+     */
+    uchar position_to_note(uchar base_note, uchar position) const {
+        // whole number of count occurences is count of octaves below
+        uchar reps     = position / count;
+        // position in the octave itself
+        uchar relative = position - reps * count;
+        uchar note     = reps * 12 + base_note + scale[relative];
+        return note;
+    }
+
+    /** Returns position of the given note in this scaling, or INVALID for
+     * invalid notes.
+     */
+    uchar note_to_position(uchar base_note, uchar note) const {
+        // position in repetition is based on the nearest lower multiply of base_note
+        uchar reps     = (note - base_note) / 12;
+        uchar relative = (note - base_note) % 12;
+
+        uchar pos = inverse[relative];
+
+        if (pos != INVALID) {
+            return reps * count + pos;
+        }
+
+        return INVALID;
+    }
+
+private:
+    // forward (position to tone)
+    uchar count;
+    uchar scale[12]   = {0,0,0,0,0,0,0,0,0,0,0,0};
+    // backward (tone to position)
+    uchar inverse[12] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
+    uint16_t mask      = 0;
+};
+
 // scales and also drum sequences...
 // scales notes to positions in the grid
 class NoteScaler {
 public:
-    enum ScaleMode {
-        SM_CHROMATIC = 0, // am lazy, this is the easiest
-    };
+    using Bitmask = uint16_t; // enough bits for one octave
+    static constexpr const uchar INVALID = 0xFF;
 
-    NoteScaler(long offset, long mtx_h, ScaleMode mode = SM_CHROMATIC)
-        : offset(offset), mtx_h(mtx_h), mode(mode)
+    /** 10 Different scale modes, listing relative semitone lists each
+     *  1 3   6 8 10
+     * 0 2 4 5 7 9 11
+     */
+    static constexpr std::array<Scale, 11> scales{{
+            {"Chromatic",        {0,1,2,3,4,5,6,7,8,9,10,11}},
+            {"Major",            {0,  2,  4,5,  7,  9,   11}},
+            {"Minor",            {0,  2,3,  5,  7,8,  10}},
+            {"Melodic Minor",    {0,  2,3,  5,  7,  9,   11}},
+            {"Harmonic Minor",   {0,  2,3,  5,  7,8,     11}},
+            {"Blues",            {0,    3,  5,6,7,    10}},
+            {"Myxolidian",       {0,  2,  4,5,  7,  9,10}},
+            {"Dorian",           {0,  2,3,  5,  7,  9,10}},
+            {"Major Pentatonic", {0,  2,  4,    7,  9   }},
+            {"Minor Pentatonic", {0,    3,4,    7,    10}},
+            {"Diminished",       {0,  2,  4,  6,  8,  10}}}};
+
+    NoteScaler(long offset, long mtx_h, uchar scale = 0)
+        : offset(offset), mtx_h(mtx_h), scidx(scale)
     {}
 
     void scroll(int direction) {
@@ -235,16 +315,25 @@ public:
         if (r > NOTE_MAX)
             return NOTE_MAX;
 
-        return (uchar)r;
+        // use scale to convert the position to note
+        auto rnote = scale().position_to_note(base_note, (uchar)r);
+        return rnote;
     }
 
     long to_grid(uchar note) {
-        return mtx_h - 1 - (note - offset);
+        uchar pos = scale().note_to_position(base_note, note);
+
+        if (pos == Scale::INVALID) {
+            // TODO: Handle invalid notes!
+            return 0;
+        }
+
+        // recalc to window
+        return mtx_h - 1 - (pos - offset);
    }
 
     bool is_in_scale(uchar note) {
-        // TODO: implement after implementing different scales
-        return true;
+        return to_grid(note) != Scale::INVALID;
     }
 
     uchar move_steps(uchar note, int8_t steps) {
@@ -252,15 +341,31 @@ public:
     }
 
     bool is_scale_mark(int y) {
-        // mark all Cs by default
-        long r = offset + mtx_h - 1 - y;
-        return r % 12 == 0;
+        long note = to_note(y);
+        return (note + base_note) % 12 == 0;
+    }
+
+    void switch_scale() {
+        // bottom row should stay on the same position
+        // but offset is relative to the old scale
+        // so we have to get note of the bottom row and back
+        uchar note_off = to_note(mtx_h - 1);
+        scidx = (scidx + 1) % scales.size();
+        offset = scale().note_to_position(base_note, note_off);
+        // TODO: Notification system should output scale change here
+    }
+
+    const Scale &scale() const {
+        if (scidx >= scales.size())
+            return scales[0];
+        return scales[scidx];
     }
 
 protected:
     long offset;
     long mtx_h;
-    ScaleMode mode;
+    uchar scidx     = 0;
+    uchar base_note = 0; // base note for current scale (0 == C)
 };
 
 inline int lowest_bit_set(uchar c) {
